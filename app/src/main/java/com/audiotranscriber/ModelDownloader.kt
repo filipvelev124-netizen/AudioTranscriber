@@ -87,22 +87,48 @@ object ModelDownloader {
     }
 
     private fun unzip(zipFile: File, targetDir: File) {
+        val canonicalTarget = targetDir.canonicalPath
+        val maxEntryBytes = 300L * 1024 * 1024   // 300 MB per file — model is ~60 MB
+        var totalExtracted = 0L
+        val totalLimit     = 600L * 1024 * 1024   // 600 MB total across all entries
+
         ZipInputStream(zipFile.inputStream().buffered()).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
-                val outFile = File(targetDir, entry.name)
+                val outFile   = File(targetDir, entry.name)
+                val canonical = outFile.canonicalPath
+
+                // Zip Slip protection: resolved path must stay inside targetDir
+                if (!canonical.startsWith(canonicalTarget + File.separator) &&
+                    canonical != canonicalTarget) {
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                    continue
+                }
+
                 if (entry.isDirectory) {
                     outFile.mkdirs()
                 } else {
                     outFile.parentFile?.mkdirs()
-                    outFile.outputStream().use { zis.copyTo(it) }
+                    outFile.outputStream().use { out ->
+                        val buf = ByteArray(8_192)
+                        var entryBytes = 0L
+                        var read: Int
+                        while (zis.read(buf).also { read = it } != -1) {
+                            entryBytes    += read
+                            totalExtracted += read
+                            if (entryBytes > maxEntryBytes || totalExtracted > totalLimit)
+                                throw SecurityException("ZIP content exceeds size limit")
+                            out.write(buf, 0, read)
+                        }
+                    }
                 }
                 zis.closeEntry()
                 entry = zis.nextEntry
             }
         }
 
-        // The zip unpacks a versioned folder (e.g. vosk-model-small-en-us-0.22).
+        // The zip unpacks a versioned folder (e.g. vosk-model-small-en-us-0.15).
         // Rename it to the stable MODEL_DIR_NAME so the path never changes.
         val extracted = targetDir.listFiles { f ->
             f.isDirectory && f.name.startsWith("vosk-model")

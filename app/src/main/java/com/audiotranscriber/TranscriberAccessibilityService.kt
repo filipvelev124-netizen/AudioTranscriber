@@ -22,8 +22,12 @@ class TranscriberAccessibilityService : AccessibilityService() {
     private val transcriptReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             try {
-                val nodeId     = intent.getStringExtra(AudioCaptureService.EXTRA_NODE_ID) ?: return
-                val transcript = intent.getStringExtra(AudioCaptureService.EXTRA_TRANSCRIPT) ?: return
+                // Validate lengths — guards against crafted broadcasts on older/MIUI devices
+                // where the fallback registration has no export flag
+                val nodeId = intent.getStringExtra(AudioCaptureService.EXTRA_NODE_ID)
+                    ?.takeIf { it.length <= 256 } ?: return
+                val transcript = intent.getStringExtra(AudioCaptureService.EXTRA_TRANSCRIPT)
+                    ?.take(8_192) ?: return
                 overlayManager.updateTranscript(nodeId, transcript)
             } catch (e: Exception) { /* never crash the service */ }
         }

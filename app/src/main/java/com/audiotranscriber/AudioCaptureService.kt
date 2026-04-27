@@ -79,7 +79,8 @@ class AudioCaptureService : Service() {
                 if (data != null) initProjection(code, data)
             }
             ACTION_START_CAPTURE -> {
-                val nodeId = intent.getStringExtra(EXTRA_NODE_ID) ?: return START_STICKY
+                val nodeId = intent.getStringExtra(EXTRA_NODE_ID)
+                    ?.takeIf { it.length <= 256 } ?: return START_STICKY
                 startCapture(nodeId)
             }
             ACTION_STOP_CAPTURE -> stopCapture(sendEmptyResult = true)
@@ -94,7 +95,7 @@ class AudioCaptureService : Service() {
         mediaProjection?.stop()
         mediaProjection = manager.getMediaProjection(resultCode, data)
         isProjectionReady = true
-        sendBroadcast(Intent(BROADCAST_PROJECTION_READY))
+        sendBroadcast(Intent(BROADCAST_PROJECTION_READY).apply { setPackage(packageName) })
         updateNotification("Ready — tap 🎙 in any chat overlay")
     }
 
@@ -243,7 +244,10 @@ class AudioCaptureService : Service() {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun broadcast(nodeId: String, transcript: String) {
+        // setPackage() restricts delivery to our own process — prevents other apps
+        // from snooping the TRANSCRIPT_RESULT broadcast and reading private transcripts
         sendBroadcast(Intent(BROADCAST_RESULT).apply {
+            setPackage(packageName)
             putExtra(EXTRA_NODE_ID, nodeId)
             putExtra(EXTRA_TRANSCRIPT, transcript)
         })
