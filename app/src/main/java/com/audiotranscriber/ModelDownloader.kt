@@ -11,9 +11,12 @@ import java.util.zip.ZipInputStream
 
 object ModelDownloader {
 
-    // Small model ~45 MB — accurate enough for voice messages
-    private const val MODEL_URL =
-        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip"
+    // Ordered list of mirrors/versions to try — first success wins
+    private val MODEL_URLS = listOf(
+        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip",
+        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
+        "https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-model-small-en-us-0.15.zip"
+    )
     const val MODEL_DIR_NAME = "vosk-model"
 
     fun modelDir(context: Context) = File(context.filesDir, MODEL_DIR_NAME)
@@ -32,11 +35,16 @@ object ModelDownloader {
                 .readTimeout(10, TimeUnit.MINUTES)
                 .build()
 
-            val request = Request.Builder().url(MODEL_URL).build()
-            val response = client.newCall(request).execute()
+            // Try each mirror in order until one succeeds
+            var response = client.newCall(Request.Builder().url(MODEL_URLS[0]).build()).execute()
+            for (url in MODEL_URLS) {
+                response.close()
+                response = client.newCall(Request.Builder().url(url).build()).execute()
+                if (response.isSuccessful) break
+            }
 
             if (!response.isSuccessful) {
-                withContext(Dispatchers.Main) { onError("HTTP ${response.code}") }
+                withContext(Dispatchers.Main) { onError("All download sources returned HTTP ${response.code}. Check your internet connection.") }
                 return@withContext
             }
 
