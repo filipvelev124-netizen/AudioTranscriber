@@ -20,13 +20,16 @@ object LocalTranscriber {
             onError("Model not found — download it first")
             return
         }
-        try {
-            model = Model(modelPath.absolutePath)
-            isReady = true
-            onReady()
-        } catch (e: Exception) {
-            onError("Failed to load model: ${e.message}")
-        }
+        // Load the model on a background thread — it reads ~50 MB from disk
+        Thread {
+            try {
+                model = Model(modelPath.absolutePath)
+                isReady = true
+                onReady()
+            } catch (e: Exception) {
+                onError("Failed to load model: ${e.message}")
+            }
+        }.start()
     }
 
     suspend fun transcribeBytes(audioBytes: ByteArray, sampleRate: Float = 16_000f): String =
@@ -34,11 +37,13 @@ object LocalTranscriber {
             if (!isReady || model == null) return@withContext "⏳ Model not ready yet"
             runRecognizer(sampleRate) { recognizer ->
                 var offset = 0
-                val chunk = 4_096
+                val chunkSize = 4_096
                 while (offset < audioBytes.size) {
-                    val end = minOf(offset + chunk, audioBytes.size)
-                    recognizer.acceptWaveForm(audioBytes, offset, end - offset)
-                    offset += chunk
+                    val end = minOf(offset + chunkSize, audioBytes.size)
+                    // acceptWaveForm(ByteArray, Int) — slice then pass size
+                    val slice = audioBytes.copyOfRange(offset, end)
+                    recognizer.acceptWaveForm(slice, slice.size)
+                    offset += chunkSize
                 }
             }
         }

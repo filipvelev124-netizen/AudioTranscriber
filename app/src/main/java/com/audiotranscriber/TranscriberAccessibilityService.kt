@@ -10,6 +10,14 @@ import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
+private fun AccessibilityService.startServiceCompat(intent: Intent) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        startForegroundService(intent)
+    } else {
+        startService(intent)
+    }
+}
+
 class TranscriberAccessibilityService : AccessibilityService() {
 
     private lateinit var overlayManager: OverlayManager
@@ -166,7 +174,7 @@ class TranscriberAccessibilityService : AccessibilityService() {
 
         overlayManager.setRecordingState(nodeId)
 
-        startService(
+        startServiceCompat(
             Intent(this, AudioCaptureService::class.java).apply {
                 action = AudioCaptureService.ACTION_START_CAPTURE
                 putExtra(AudioCaptureService.EXTRA_NODE_ID, nodeId)
@@ -176,7 +184,7 @@ class TranscriberAccessibilityService : AccessibilityService() {
 
     private fun onStopRequested(nodeId: String) {
         overlayManager.setTranscribingState(nodeId)
-        startService(
+        startServiceCompat(
             Intent(this, AudioCaptureService::class.java).apply {
                 action = AudioCaptureService.ACTION_STOP_CAPTURE
                 putExtra(AudioCaptureService.EXTRA_NODE_ID, nodeId)
