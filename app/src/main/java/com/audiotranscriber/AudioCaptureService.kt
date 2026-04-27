@@ -3,6 +3,7 @@ package com.audiotranscriber
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.media.AudioFormat
@@ -65,7 +66,7 @@ class AudioCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Ready"))
+        startForeground(NOTIFICATION_ID, buildNotification("Open app to finish setup"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -271,13 +272,22 @@ class AudioCaptureService : Service() {
         }
     }
 
-    private fun buildNotification(text: String): Notification =
-        NotificationCompat.Builder(this, CHANNEL_ID)
+    private fun buildNotification(text: String): Notification {
+        val openApp = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Audio Transcriber")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentIntent(openApp)
             .setOngoing(true)
             .build()
+    }
 
     private fun updateNotification(text: String) {
         getSystemService(NotificationManager::class.java)

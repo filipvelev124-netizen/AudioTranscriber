@@ -39,6 +39,14 @@ class TranscriberAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         try {
+            // Start AudioCaptureService as a foreground anchor — this is the critical fix
+            // for MIUI/ColorOS/EMUI which kill accessibility service processes that have
+            // no visible foreground component. Without this, MIUI shows "Not working."
+            val anchor = Intent(this, AudioCaptureService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(anchor)
+            else startService(anchor)
+        } catch (e: Exception) { /* foreground service start failed — continue anyway */ }
+        try {
             registerReceivers()
             LocalTranscriber.initialize(context = this, onReady = {}, onError = {})
         } catch (e: Exception) { /* log silently — service must not crash */ }
