@@ -13,21 +13,16 @@
     <!-- Arc stand -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M37,53 C37,62.9 44.6,71 54,71 C63.4,71 71,62.9 71,53 L67,53 C67,60.7 61.2,67 54,67 C46.8,67 41,60.7 41,53 Z"/>
+        android:pathData="M37,54 C37,63.4 44.6,71 54,71 C63.4,71 71,63.4 71,54 L67,54 C67,61.2 61.2,67 54,67 C46.8,67 41,61.2 41,54 Z"/>
 
     <!-- Stem -->
-    <rect
+    <path
         android:fillColor="#FFFFFF"
-        android:left="52"
-        android:top="71"
-        android:right="56"
-        android:bottom="80"/>
+        android:pathData="M52,71 L56,71 L56,80 L52,80 Z"/>
 
     <!-- Base -->
-    <rect
+    <path
         android:fillColor="#FFFFFF"
-        android:left="45"
-        android:top="80"
-        android:right="63"
-        android:bottom="84"/>
+        android:pathData="M45,80 L63,80 L63,84 L45,84 Z"/>
+
 </vector>
