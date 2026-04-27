@@ -12,10 +12,10 @@ import java.util.zip.ZipInputStream
 object ModelDownloader {
 
     // Ordered list of mirrors/versions to try — first success wins
+    // 0.15 confirmed working; 0.22 returns 404 on alphacephei servers
     private val MODEL_URLS = listOf(
-        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip",
         "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-        "https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-model-small-en-us-0.15.zip"
+        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip"
     )
     const val MODEL_DIR_NAME = "vosk-model"
 
