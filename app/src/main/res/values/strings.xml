@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Audio Transcriber</string>
+    <string name="accessibility_service_label">Audio Message Transcriber</string>
+    <string name="accessibility_service_description">Reads voice message nodes in chat apps to auto-transcribe them on-device with Vosk.</string>
+</resources>

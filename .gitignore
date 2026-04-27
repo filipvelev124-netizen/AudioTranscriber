@@ -1,0 +1,30 @@
+# Android build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+build/
+.gradle/
+
+# Local config (contains your SDK path — never commit this)
+local.properties
+
+# Android Studio IDE files
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/caches/
+.idea/deploymentTargetSelector.xml
+.idea/navEditor.xml
+.idea/.gitignore
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keep the Gradle wrapper (needed to build without installing Gradle)
+!gradle/wrapper/gradle-wrapper.jar
