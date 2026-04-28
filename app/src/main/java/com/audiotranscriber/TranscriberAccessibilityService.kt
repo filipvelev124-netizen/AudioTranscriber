@@ -14,6 +14,7 @@ import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
+import java.util.ArrayDeque
 
 class TranscriberAccessibilityService : AccessibilityService() {
 
@@ -22,6 +23,7 @@ class TranscriberAccessibilityService : AccessibilityService() {
     private val processedNodes = mutableSetOf<String>()
     private var lastWindowId = -1
     private var receiversRegistered = false
+    private var lastEventProcessedMs = 0L
 
     private val transcriptReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -36,11 +38,6 @@ class TranscriberAccessibilityService : AccessibilityService() {
     }
 
     override fun onServiceConnected() {
-        // Promote this service to foreground so MIUI/aggressive ROMs cannot kill the process.
-        // We do this on the accessibility service itself (not AudioCaptureService) because
-        // accessibility services are bound by the system and don't need a foregroundServiceType
-        // declaration — avoiding the Android 14 requirement that typed foreground services
-        // hold the matching dangerous permission before starting.
         try {
             createNotificationChannel()
             startForeground(NOTIFICATION_ID, buildNotification())
@@ -75,10 +72,21 @@ class TranscriberAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         try {
+            val now = System.currentTimeMillis()
+
+            // Throttle: Instagram and similar apps fire hundreds of events per second.
+            // Processing every event causes excessive CPU load and risks StackOverflow.
+            if (now - lastEventProcessedMs < EVENT_THROTTLE_MS) return
+            lastEventProcessedMs = now
+
             if (event.windowId != lastWindowId) {
                 lastWindowId = event.windowId
                 processedNodes.clear()
             }
+
+            // Prevent unbounded growth when staying in the same window for a long time
+            if (processedNodes.size > MAX_PROCESSED_NODES) processedNodes.clear()
+
             val root = rootInActiveWindow ?: return
             try {
                 scanForAudioMessages(root)
@@ -115,15 +123,39 @@ class TranscriberAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun traverseTree(node: AccessibilityNodeInfo, visitor: (AccessibilityNodeInfo) -> Unit) {
-        try { visitor(node) } catch (e: Throwable) { }
-        val count = try { node.childCount } catch (e: Throwable) { 0 }
-        for (i in 0 until count) {
-            val child = try { node.getChild(i) } catch (e: Throwable) { null } ?: continue
+    // Iterative BFS — avoids StackOverflowError on deeply-nested UIs (e.g. Instagram DMs).
+    // Each child is recycled after visiting so we don't leak AccessibilityNodeInfo objects.
+    private fun traverseTree(root: AccessibilityNodeInfo, visitor: (AccessibilityNodeInfo) -> Unit) {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+
+        while (queue.isNotEmpty()) {
+            if (visited++ > MAX_TREE_NODES) break
+
+            val node = queue.poll() ?: continue
             try {
-                traverseTree(child, visitor)
-            } finally {
-                try { child.recycle() } catch (e: Throwable) { }
+                visitor(node)
+            } catch (e: Throwable) { }
+
+            val count = try { node.childCount } catch (e: Throwable) { 0 }
+            for (i in 0 until count) {
+                val child = try { node.getChild(i) } catch (e: Throwable) { null } ?: continue
+                queue.add(child)
+            }
+
+            // Recycle non-root nodes once we're done processing them.
+            // The root is owned by onAccessibilityEvent's finally block.
+            if (node !== root) {
+                try { node.recycle() } catch (e: Throwable) { }
+            }
+        }
+
+        // Drain and recycle any nodes we never got to visit (hit the cap)
+        while (queue.isNotEmpty()) {
+            val leftover = queue.poll() ?: continue
+            if (leftover !== root) {
+                try { leftover.recycle() } catch (e: Throwable) { }
             }
         }
     }
@@ -148,6 +180,11 @@ class TranscriberAccessibilityService : AccessibilityService() {
     private fun showOverlayForNode(node: AccessibilityNodeInfo, nodeId: String) {
         val rect = Rect()
         node.getBoundsInScreen(rect)
+
+        // Skip nodes with invalid or empty bounds (invisible/off-screen elements)
+        if (rect.isEmpty || rect.left < 0 || rect.top < 0 ||
+            rect.width() < 4 || rect.height() < 4) return
+
         overlayManager.showTranscriptOverlay(
             x = rect.left,
             y = rect.bottom + 6,
@@ -224,6 +261,10 @@ class TranscriberAccessibilityService : AccessibilityService() {
     companion object {
         private const val CHANNEL_ID      = "service_channel"
         private const val NOTIFICATION_ID = 41
+
+        private const val EVENT_THROTTLE_MS   = 150L
+        private const val MAX_PROCESSED_NODES = 500
+        private const val MAX_TREE_NODES      = 2_000
 
         private val audioKeywords = listOf(
             "voice message", "audio message", "voice note", "audio note",

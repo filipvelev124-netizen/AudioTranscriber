@@ -47,7 +47,7 @@ class OverlayManager(private val context: Context) {
             // would re-post a second lambda that runs AFTER we add the new overlay, deleting
             // the new one instead of the old one.
             overlays.remove(nodeId)?.let {
-                try { windowManager.removeView(it.view) } catch (_: Exception) {}
+                try { windowManager.removeView(it.view) } catch (_: Throwable) {}
             }
 
             val view = LayoutInflater.from(context).inflate(R.layout.overlay_transcript, null)
@@ -66,7 +66,7 @@ class OverlayManager(private val context: Context) {
                 overlays[nodeId] = OverlayEntry(view, btnTranscribe, btnStop, tvText)
                 // Auto-dismiss after 30 seconds if user ignores it
                 mainHandler.postDelayed({ removeOverlay(nodeId) }, 30_000L)
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 // SYSTEM_ALERT_WINDOW not yet granted
             }
         }
@@ -105,7 +105,7 @@ class OverlayManager(private val context: Context) {
     fun removeOverlay(nodeId: String) {
         mainHandler.post {
             overlays.remove(nodeId)?.let {
-                try { windowManager.removeView(it.view) } catch (_: Exception) {}
+                try { windowManager.removeView(it.view) } catch (_: Throwable) {}
             }
         }
     }
