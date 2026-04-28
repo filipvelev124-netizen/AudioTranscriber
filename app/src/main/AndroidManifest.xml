@@ -3,13 +3,12 @@
 
     <!-- Draw over other apps -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <!-- Internet: download Vosk model + optional audio URL fetch -->
+    <!-- Internet: download Vosk model one-time -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Microphone fallback when playback capture isn't available -->
+    <!-- Microphone: capture audio for transcription -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Foreground services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Show persistent notification (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -52,7 +51,7 @@
         <service
             android:name=".AudioCaptureService"
             android:exported="false"
-            android:foregroundServiceType="mediaProjection|microphone" />
+            android:foregroundServiceType="microphone" />
 
     </application>
 

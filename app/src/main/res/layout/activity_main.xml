@@ -39,10 +39,10 @@
             android:layout_marginBottom="4dp" />
 
         <TextView
-            android:id="@+id/tvModelStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Speech model: checking…"
+            android:id="@+id/tvModelStatus"
             android:textSize="14sp"
             android:textColor="@color/textSecondary"
             android:layout_marginBottom="8dp" />
@@ -138,40 +138,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Grant overlay permission"
-            android:layout_marginBottom="28dp" />
-
-        <!-- ── Step 4: Audio capture ── -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Step 4 — Enable audio capture"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:textColor="@color/textPrimary"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Captures system audio while a voice message plays. Android shows a one-time permission dialog. Needs to be re-granted if you restart your phone."
-            android:textSize="13sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="6dp" />
-
-        <TextView
-            android:id="@+id/tvCaptureStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Audio capture: checking…"
-            android:textSize="14sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="8dp" />
-
-        <Button
-            android:id="@+id/btnAudioCapture"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Enable audio capture"
             android:layout_marginBottom="32dp" />
 
         <!-- ── How to use ── -->
@@ -187,7 +153,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="1. Complete all four steps above.\n2. Open any chat app (WhatsApp, Telegram, Signal…).\n3. When a voice message appears, a dark bubble shows below it.\n4. Tap 🎙 Transcribe in the bubble.\n5. Immediately tap the play button on the voice message.\n6. The transcript appears automatically when the message finishes.\n\nAll speech processing happens on your device — nothing leaves your phone."
+            android:text="1. Complete all three steps above.\n2. Open any chat app (WhatsApp, Telegram, Instagram…).\n3. When a voice message appears, a dark bubble shows below it.\n4. Tap 🎙 Transcribe in the bubble.\n5. Immediately tap the play button on the voice message.\n6. The transcript builds in real-time as the message plays.\n\nUses your microphone — works best with speaker on.\nAll speech processing happens on your device — nothing leaves your phone."
             android:textSize="14sp"
             android:textColor="@color/textSecondary"
             android:lineSpacingMultiplier="1.5" />

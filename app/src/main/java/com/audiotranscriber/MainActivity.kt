@@ -1,9 +1,9 @@
 package com.audiotranscriber
 
+import android.Manifest
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.app.Activity
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +14,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,39 +29,28 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvModelStatus: TextView
     private lateinit var tvAccessibilityStatus: TextView
     private lateinit var tvOverlayStatus: TextView
-    private lateinit var tvCaptureStatus: TextView
     private lateinit var btnDownloadModel: Button
     private lateinit var btnAccessibility: Button
     private lateinit var btnOverlay: Button
-    private lateinit var btnAudioCapture: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var tvProgress: TextView
 
-    // Modern Activity Result API for MediaProjection permission
-    private val projectionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            startAudioCaptureService(result.resultCode, result.data!!)
-        } else {
-            tvCaptureStatus.text = "Audio capture: ❌ Permission denied"
-        }
-    }
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ -> refreshStatus() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        tvModelStatus       = findViewById(R.id.tvModelStatus)
+        tvModelStatus         = findViewById(R.id.tvModelStatus)
         tvAccessibilityStatus = findViewById(R.id.tvAccessibilityStatus)
-        tvOverlayStatus     = findViewById(R.id.tvOverlayStatus)
-        tvCaptureStatus     = findViewById(R.id.tvCaptureStatus)
-        btnDownloadModel    = findViewById(R.id.btnDownloadModel)
-        btnAccessibility    = findViewById(R.id.btnAccessibility)
-        btnOverlay          = findViewById(R.id.btnOverlay)
-        btnAudioCapture     = findViewById(R.id.btnAudioCapture)
-        progressBar         = findViewById(R.id.progressBar)
-        tvProgress          = findViewById(R.id.tvProgress)
+        tvOverlayStatus       = findViewById(R.id.tvOverlayStatus)
+        btnDownloadModel      = findViewById(R.id.btnDownloadModel)
+        btnAccessibility      = findViewById(R.id.btnAccessibility)
+        btnOverlay            = findViewById(R.id.btnOverlay)
+        progressBar           = findViewById(R.id.progressBar)
+        tvProgress            = findViewById(R.id.tvProgress)
 
         btnDownloadModel.setOnClickListener { downloadModel() }
         btnAccessibility.setOnClickListener {
@@ -72,11 +62,10 @@ class MainActivity : AppCompatActivity() {
                     Uri.parse("package:$packageName"))
             )
         }
-        btnAudioCapture.setOnClickListener { requestAudioCapturePermission() }
 
-        // If launched by the accessibility service requesting projection
-        if (intent?.getBooleanExtra("request_projection", false) == true) {
-            requestAudioCapturePermission()
+        // Request microphone permission on first launch — needed for audio capture
+        if (!hasMicPermission()) {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -120,16 +109,7 @@ class MainActivity : AppCompatActivity() {
             btnOverlay.text = "Grant overlay permission"
         }
 
-        // Step 4: audio capture
-        if (AudioCaptureService.isProjectionReady) {
-            tvCaptureStatus.text = "Audio capture: ✅ Active"
-            btnAudioCapture.text = "Re-enable audio capture"
-        } else {
-            tvCaptureStatus.text = "Audio capture: ❌ Not active"
-            btnAudioCapture.text = "Enable audio capture"
-        }
-
-        // Load model into memory if ready
+        // Load model into memory if downloaded but not yet loaded
         if (ModelDownloader.isDownloaded(this) && !LocalTranscriber.isReady) {
             LocalTranscriber.initialize(
                 context = this,
@@ -139,32 +119,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun hasMicPermission() =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+
     private fun isAccessibilityEnabled(): Boolean {
         val am = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
         return am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
             .any { it.resolveInfo.serviceInfo.packageName == packageName }
-    }
-
-    // ── Audio capture permission ──────────────────────────────────────────────
-
-    private fun requestAudioCapturePermission() {
-        val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        projectionLauncher.launch(manager.createScreenCaptureIntent())
-    }
-
-    private fun startAudioCaptureService(resultCode: Int, data: Intent) {
-        val intent = Intent(this, AudioCaptureService::class.java).apply {
-            action = AudioCaptureService.ACTION_INIT_PROJECTION
-            putExtra(AudioCaptureService.EXTRA_RESULT_CODE, resultCode)
-            putExtra(AudioCaptureService.EXTRA_PROJECTION_DATA, data)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-        tvCaptureStatus.text = "Audio capture: ✅ Active"
-        btnAudioCapture.text = "Re-enable audio capture"
     }
 
     // ── Model download ────────────────────────────────────────────────────────

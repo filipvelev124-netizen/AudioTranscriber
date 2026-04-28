@@ -22,8 +22,6 @@ class TranscriberAccessibilityService : AccessibilityService() {
     private val transcriptReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             try {
-                // Validate lengths — guards against crafted broadcasts on older/MIUI devices
-                // where the fallback registration has no export flag
                 val nodeId = intent.getStringExtra(AudioCaptureService.EXTRA_NODE_ID)
                     ?.takeIf { it.length <= 256 } ?: return
                 val transcript = intent.getStringExtra(AudioCaptureService.EXTRA_TRANSCRIPT)
@@ -33,45 +31,36 @@ class TranscriberAccessibilityService : AccessibilityService() {
         }
     }
 
-    private val projectionReadyReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) { }
-    }
-
     override fun onServiceConnected() {
         try {
-            // Start AudioCaptureService as a foreground anchor — this is the critical fix
-            // for MIUI/ColorOS/EMUI which kill accessibility service processes that have
-            // no visible foreground component. Without this, MIUI shows "Not working."
+            // Start AudioCaptureService as a foreground anchor — keeps this process alive on
+            // MIUI/ColorOS/EMUI which kill accessibility service processes with no visible
+            // foreground component, causing "Not working. Tap for info."
             val anchor = Intent(this, AudioCaptureService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(anchor)
             else startService(anchor)
-        } catch (e: Exception) { /* foreground service start failed — continue anyway */ }
+        } catch (e: Exception) { }
         try {
             registerReceivers()
             LocalTranscriber.initialize(context = this, onReady = {}, onError = {})
-        } catch (e: Exception) { /* log silently — service must not crash */ }
+        } catch (e: Exception) { }
     }
 
     private fun registerReceivers() {
         if (receiversRegistered) return
-        val resultFilter     = IntentFilter(AudioCaptureService.BROADCAST_RESULT)
-        val projReadyFilter  = IntentFilter(AudioCaptureService.BROADCAST_PROJECTION_READY)
+        val resultFilter = IntentFilter(AudioCaptureService.BROADCAST_RESULT)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(transcriptReceiver,    resultFilter,    RECEIVER_NOT_EXPORTED)
-                registerReceiver(projectionReadyReceiver, projReadyFilter, RECEIVER_NOT_EXPORTED)
+                registerReceiver(transcriptReceiver, resultFilter, RECEIVER_NOT_EXPORTED)
             } else {
-                registerReceiver(transcriptReceiver,    resultFilter)
-                registerReceiver(projectionReadyReceiver, projReadyFilter)
+                registerReceiver(transcriptReceiver, resultFilter)
             }
             receiversRegistered = true
         } catch (e: Exception) {
-            // Fallback: register without the exported flag
             try {
-                registerReceiver(transcriptReceiver,    resultFilter)
-                registerReceiver(projectionReadyReceiver, projReadyFilter)
+                registerReceiver(transcriptReceiver, resultFilter)
                 receiversRegistered = true
-            } catch (e2: Exception) { /* give up silently */ }
+            } catch (e2: Exception) { }
         }
     }
 
@@ -96,7 +85,6 @@ class TranscriberAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         try { if (receiversRegistered) unregisterReceiver(transcriptReceiver) } catch (e: Exception) {}
-        try { if (receiversRegistered) unregisterReceiver(projectionReadyReceiver) } catch (e: Exception) {}
         try { overlayManager.removeAllOverlays() } catch (e: Exception) {}
         super.onDestroy()
     }
@@ -163,17 +151,6 @@ class TranscriberAccessibilityService : AccessibilityService() {
             overlayManager.updateTranscript(nodeId, "⏳ Model loading — wait a moment and try again")
             return
         }
-        if (!AudioCaptureService.isProjectionReady) {
-            overlayManager.updateTranscript(nodeId, "🔑 Open Audio Transcriber app and tap \"Enable Audio Capture\"")
-            try {
-                val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    putExtra("request_projection", true)
-                }
-                launch?.let { startActivity(it) }
-            } catch (e: Exception) {}
-            return
-        }
         overlayManager.setRecordingState(nodeId)
         try {
             val intent = Intent(this, AudioCaptureService::class.java).apply {
@@ -192,7 +169,6 @@ class TranscriberAccessibilityService : AccessibilityService() {
         try {
             val intent = Intent(this, AudioCaptureService::class.java).apply {
                 action = AudioCaptureService.ACTION_STOP_CAPTURE
-                putExtra(AudioCaptureService.EXTRA_NODE_ID, nodeId)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
             else startService(intent)
