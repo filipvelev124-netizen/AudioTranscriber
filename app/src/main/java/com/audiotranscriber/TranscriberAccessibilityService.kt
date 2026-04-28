@@ -1,6 +1,10 @@
 package com.audiotranscriber
 
 import android.accessibilityservice.AccessibilityService
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -9,10 +13,10 @@ import android.graphics.Rect
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.app.NotificationCompat
 
 class TranscriberAccessibilityService : AccessibilityService() {
 
-    // Lazy so onInterrupt() can never crash with UninitializedPropertyAccessException
     private val overlayManager by lazy { OverlayManager(this) }
 
     private val processedNodes = mutableSetOf<String>()
@@ -27,40 +31,45 @@ class TranscriberAccessibilityService : AccessibilityService() {
                 val transcript = intent.getStringExtra(AudioCaptureService.EXTRA_TRANSCRIPT)
                     ?.take(8_192) ?: return
                 overlayManager.updateTranscript(nodeId, transcript)
-            } catch (e: Exception) { /* never crash the service */ }
+            } catch (e: Throwable) { }
         }
     }
 
     override fun onServiceConnected() {
+        // Promote this service to foreground so MIUI/aggressive ROMs cannot kill the process.
+        // We do this on the accessibility service itself (not AudioCaptureService) because
+        // accessibility services are bound by the system and don't need a foregroundServiceType
+        // declaration — avoiding the Android 14 requirement that typed foreground services
+        // hold the matching dangerous permission before starting.
         try {
-            // Start AudioCaptureService as a foreground anchor — keeps this process alive on
-            // MIUI/ColorOS/EMUI which kill accessibility service processes with no visible
-            // foreground component, causing "Not working. Tap for info."
-            val anchor = Intent(this, AudioCaptureService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(anchor)
-            else startService(anchor)
-        } catch (e: Exception) { }
+            createNotificationChannel()
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } catch (e: Throwable) { }
+
         try {
             registerReceivers()
+        } catch (e: Throwable) { }
+
+        try {
             LocalTranscriber.initialize(context = this, onReady = {}, onError = {})
-        } catch (e: Exception) { }
+        } catch (e: Throwable) { }
     }
 
     private fun registerReceivers() {
         if (receiversRegistered) return
-        val resultFilter = IntentFilter(AudioCaptureService.BROADCAST_RESULT)
+        val filter = IntentFilter(AudioCaptureService.BROADCAST_RESULT)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(transcriptReceiver, resultFilter, RECEIVER_NOT_EXPORTED)
+                registerReceiver(transcriptReceiver, filter, RECEIVER_NOT_EXPORTED)
             } else {
-                registerReceiver(transcriptReceiver, resultFilter)
+                registerReceiver(transcriptReceiver, filter)
             }
             receiversRegistered = true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             try {
-                registerReceiver(transcriptReceiver, resultFilter)
+                registerReceiver(transcriptReceiver, filter)
                 receiversRegistered = true
-            } catch (e2: Exception) { }
+            } catch (e2: Throwable) { }
         }
     }
 
@@ -74,18 +83,19 @@ class TranscriberAccessibilityService : AccessibilityService() {
             try {
                 scanForAudioMessages(root)
             } finally {
-                root.recycle()
+                try { root.recycle() } catch (e: Throwable) { }
             }
-        } catch (e: Exception) { /* never crash the service */ }
+        } catch (e: Throwable) { }
     }
 
     override fun onInterrupt() {
-        try { overlayManager.removeAllOverlays() } catch (e: Exception) {}
+        try { overlayManager.removeAllOverlays() } catch (e: Throwable) { }
     }
 
     override fun onDestroy() {
-        try { if (receiversRegistered) unregisterReceiver(transcriptReceiver) } catch (e: Exception) {}
-        try { overlayManager.removeAllOverlays() } catch (e: Exception) {}
+        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (e: Throwable) { }
+        try { if (receiversRegistered) unregisterReceiver(transcriptReceiver) } catch (e: Throwable) { }
+        try { overlayManager.removeAllOverlays() } catch (e: Throwable) { }
         super.onDestroy()
     }
 
@@ -93,24 +103,27 @@ class TranscriberAccessibilityService : AccessibilityService() {
 
     private fun scanForAudioMessages(root: AccessibilityNodeInfo) {
         traverseTree(root) { node ->
-            if (isAudioMessageNode(node)) {
-                val key = nodeKey(node)
-                if (key !in processedNodes) {
-                    processedNodes.add(key)
-                    showOverlayForNode(node, key)
+            try {
+                if (isAudioMessageNode(node)) {
+                    val key = nodeKey(node)
+                    if (key !in processedNodes) {
+                        processedNodes.add(key)
+                        showOverlayForNode(node, key)
+                    }
                 }
-            }
+            } catch (e: Throwable) { }
         }
     }
 
     private fun traverseTree(node: AccessibilityNodeInfo, visitor: (AccessibilityNodeInfo) -> Unit) {
-        try { visitor(node) } catch (e: Exception) {}
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
+        try { visitor(node) } catch (e: Throwable) { }
+        val count = try { node.childCount } catch (e: Throwable) { 0 }
+        for (i in 0 until count) {
+            val child = try { node.getChild(i) } catch (e: Throwable) { null } ?: continue
             try {
                 traverseTree(child, visitor)
             } finally {
-                try { child.recycle() } catch (e: Exception) {}
+                try { child.recycle() } catch (e: Throwable) { }
             }
         }
     }
@@ -127,9 +140,7 @@ class TranscriberAccessibilityService : AccessibilityService() {
                 clazz.contains("ImageView", ignoreCase = true)
 
         if (!isControl) return false
-
-        val combined = "$desc $text"
-        return audioKeywords.any { combined.contains(it) }
+        return audioKeywords.any { ("$desc $text").contains(it) }
     }
 
     // ── Overlay wiring ────────────────────────────────────────────────────────
@@ -159,7 +170,7 @@ class TranscriberAccessibilityService : AccessibilityService() {
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
             else startService(intent)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             overlayManager.updateTranscript(nodeId, "❌ Could not start capture: ${e.message}")
         }
     }
@@ -172,7 +183,7 @@ class TranscriberAccessibilityService : AccessibilityService() {
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
             else startService(intent)
-        } catch (e: Exception) {}
+        } catch (e: Throwable) { }
     }
 
     private fun nodeKey(node: AccessibilityNodeInfo): String {
@@ -181,7 +192,39 @@ class TranscriberAccessibilityService : AccessibilityService() {
         return "${node.className}@${r.left},${r.top},${r.right},${r.bottom}"
     }
 
+    // ── Foreground notification (keeps process alive on MIUI) ─────────────────
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(
+                CHANNEL_ID, "Transcriber Service", NotificationManager.IMPORTANCE_MIN
+            ).apply { setShowBadge(false) }
+            getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
+        }
+    }
+
+    private fun buildNotification(): Notification {
+        val openApp = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Audio Transcriber")
+            .setContentText("Watching for voice messages…")
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentIntent(openApp)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setOngoing(true)
+            .build()
+    }
+
     companion object {
+        private const val CHANNEL_ID      = "service_channel"
+        private const val NOTIFICATION_ID = 41
+
         private val audioKeywords = listOf(
             "voice message", "audio message", "voice note", "audio note",
             "play audio", "play voice", "play message", "audio clip",

@@ -93,6 +93,7 @@ class AudioCaptureService : Service() {
         updateNotification("🔴 Recording… play the message now")
 
         captureJob = scope.launch {
+          try {
             val buf = ShortArray(4_096)
             val startMs           = System.currentTimeMillis()
             var lastLoudMs        = startMs
@@ -187,6 +188,10 @@ class AudioCaptureService : Service() {
             }
 
             updateNotification("Ready — tap 🎙 in any chat overlay")
+          } catch (e: Throwable) {
+              broadcast(nodeId, "❌ Capture error: ${e.message}")
+              stopCapture()
+          }
         }
     }
 
