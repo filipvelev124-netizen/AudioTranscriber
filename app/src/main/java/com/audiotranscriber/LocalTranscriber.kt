@@ -6,11 +6,16 @@ import org.vosk.Recognizer
 
 object LocalTranscriber {
 
-    private var model: Model? = null
+    // @Volatile so the IO dispatcher sees the value written by the background loader thread
+    @Volatile private var model: Model? = null
     @Volatile var isReady = false
         private set
 
     fun initialize(context: Context, onReady: () -> Unit, onError: (String) -> Unit) {
+        // Guard against double-loading — called from both MainActivity and the
+        // accessibility service; without this, two Model objects would be created
+        // simultaneously and the first one would leak
+        if (isReady) { onReady(); return }
         val modelPath = ModelDownloader.modelDir(context)
         if (!modelPath.exists()) {
             onError("Model not found — download it first")

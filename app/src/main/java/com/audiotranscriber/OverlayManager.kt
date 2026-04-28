@@ -42,7 +42,13 @@ class OverlayManager(private val context: Context) {
         onStopClick: () -> Unit
     ) {
         mainHandler.post {
-            removeOverlay(nodeId)
+            // Remove any existing overlay for this nodeId synchronously — we are already
+            // on the main thread (inside mainHandler.post), so calling removeOverlay() here
+            // would re-post a second lambda that runs AFTER we add the new overlay, deleting
+            // the new one instead of the old one.
+            overlays.remove(nodeId)?.let {
+                try { windowManager.removeView(it.view) } catch (_: Exception) {}
+            }
 
             val view = LayoutInflater.from(context).inflate(R.layout.overlay_transcript, null)
             val tvText       = view.findViewById<TextView>(R.id.transcriptText)

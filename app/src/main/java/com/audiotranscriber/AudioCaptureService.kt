@@ -12,6 +12,7 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -93,105 +94,109 @@ class AudioCaptureService : Service() {
         updateNotification("🔴 Recording… play the message now")
 
         captureJob = scope.launch {
-          try {
-            val buf = ShortArray(4_096)
-            val startMs           = System.currentTimeMillis()
-            var lastLoudMs        = startMs
-            var audioEverDetected = false
-            var lastPartialMs     = 0L
-            val accumulated       = StringBuilder()
-
-            val silenceRmsThreshold = 150.0
-            val silenceGapMs        = 2_000L
-            val startupTimeoutMs    = 15_000L
-            val hardLimitMs         = 90_000L
-            val partialIntervalMs   = 300L
-
-            while (isActive) {
-                val now     = System.currentTimeMillis()
-                val elapsed = now - startMs
-
-                if (elapsed > hardLimitMs) break
-
-                val read = record.read(buf, 0, buf.size)
-                if (read <= 0) continue
-
-                // RMS for silence detection
-                var sum = 0.0
-                for (i in 0 until read) sum += buf[i].toDouble() * buf[i]
-                val rms = sqrt(sum / read)
-
-                if (rms > silenceRmsThreshold) {
-                    audioEverDetected = true
-                    lastLoudMs = now
-                }
-
-                if (!audioEverDetected && elapsed > startupTimeoutMs) {
-                    broadcast(nodeId, "⏰ No audio detected. Tap 🎙 then immediately play the voice message.")
-                    break
-                }
-
-                if (audioEverDetected && (now - lastLoudMs) > silenceGapMs) break
-
-                // Feed PCM chunk to Vosk and stream partial results in real-time
-                try {
-                    val bytes = ByteArray(read * 2)
-                    for (i in 0 until read) {
-                        bytes[i * 2]     = (buf[i].toInt() and 0xFF).toByte()
-                        bytes[i * 2 + 1] = (buf[i].toInt() shr 8 and 0xFF).toByte()
-                    }
-
-                    if (recognizer.acceptWaveForm(bytes, bytes.size)) {
-                        // Vosk detected end of utterance — append confirmed text
-                        val text = LocalTranscriber.parseResult(recognizer.result)
-                        if (!text.startsWith("🔇")) {
-                            if (accumulated.isNotEmpty()) accumulated.append(" ")
-                            accumulated.append(text)
-                            broadcast(nodeId, accumulated.toString())
-                        }
-                    } else if (now - lastPartialMs > partialIntervalMs) {
-                        // Stream live partial result every 300 ms
-                        lastPartialMs = now
-                        val partial = LocalTranscriber.parsePartial(recognizer.partialResult)
-                        if (partial.isNotEmpty()) {
-                            val display = buildString {
-                                if (accumulated.isNotEmpty()) append(accumulated).append(" ")
-                                append("🎙 ").append(partial).append("…")
-                            }
-                            broadcast(nodeId, display)
-                        }
-                    }
-                } catch (e: Throwable) { /* Vosk feed error — skip chunk, keep recording */ }
-            }
-
-            if (!isActive) {
-                try { recognizer.close() } catch (_: Throwable) {}
-                return@launch
-            }
-
-            stopCapture()
-
-            // Get final accumulated transcript
             try {
-                val finalText = LocalTranscriber.parseResult(recognizer.finalResult)
-                recognizer.close()
-                val result = when {
-                    !finalText.startsWith("🔇") && accumulated.isNotEmpty() -> "$accumulated $finalText"
-                    !finalText.startsWith("🔇")                              -> finalText
-                    accumulated.isNotEmpty()                                  -> accumulated.toString()
-                    else                                                      -> "🔇 No speech detected"
+                val buf = ShortArray(4_096)
+                val startMs           = System.currentTimeMillis()
+                var lastLoudMs        = startMs
+                var audioEverDetected = false
+                var lastPartialMs     = 0L
+                val accumulated       = StringBuilder()
+
+                val silenceRmsThreshold = 150.0
+                val silenceGapMs        = 2_000L
+                val startupTimeoutMs    = 15_000L
+                val hardLimitMs         = 90_000L
+                val partialIntervalMs   = 300L
+
+                while (isActive) {
+                    val now     = System.currentTimeMillis()
+                    val elapsed = now - startMs
+
+                    if (elapsed > hardLimitMs) break
+
+                    val read = record.read(buf, 0, buf.size)
+                    if (read <= 0) continue
+
+                    // RMS for silence detection
+                    var sum = 0.0
+                    for (i in 0 until read) sum += buf[i].toDouble() * buf[i]
+                    val rms = sqrt(sum / read)
+
+                    if (rms > silenceRmsThreshold) {
+                        audioEverDetected = true
+                        lastLoudMs = now
+                    }
+
+                    if (!audioEverDetected && elapsed > startupTimeoutMs) {
+                        broadcast(nodeId, "⏰ No audio detected. Tap 🎙 then immediately play the voice message.")
+                        break
+                    }
+
+                    if (audioEverDetected && (now - lastLoudMs) > silenceGapMs) break
+
+                    // Feed PCM chunk to Vosk and stream partial results in real-time
+                    try {
+                        val bytes = ByteArray(read * 2)
+                        for (i in 0 until read) {
+                            bytes[i * 2]     = (buf[i].toInt() and 0xFF).toByte()
+                            bytes[i * 2 + 1] = (buf[i].toInt() shr 8 and 0xFF).toByte()
+                        }
+                        if (recognizer.acceptWaveForm(bytes, bytes.size)) {
+                            val text = LocalTranscriber.parseResult(recognizer.result)
+                            if (!text.startsWith("🔇")) {
+                                if (accumulated.isNotEmpty()) accumulated.append(" ")
+                                accumulated.append(text)
+                                broadcast(nodeId, accumulated.toString())
+                            }
+                        } else if (now - lastPartialMs > partialIntervalMs) {
+                            lastPartialMs = now
+                            val partial = LocalTranscriber.parsePartial(recognizer.partialResult)
+                            if (partial.isNotEmpty()) {
+                                val display = buildString {
+                                    if (accumulated.isNotEmpty()) append(accumulated).append(" ")
+                                    append("🎙 ").append(partial).append("…")
+                                }
+                                broadcast(nodeId, display)
+                            }
+                        }
+                    } catch (e: Throwable) { /* Vosk feed error — skip chunk, keep recording */ }
                 }
-                broadcast(nodeId, result.trim())
+
+                if (!isActive) {
+                    try { recognizer.close() } catch (_: Throwable) {}
+                    return@launch
+                }
+
+                stopCapture()
+
+                try {
+                    val finalText = LocalTranscriber.parseResult(recognizer.finalResult)
+                    recognizer.close()
+                    val result = when {
+                        !finalText.startsWith("🔇") && accumulated.isNotEmpty() -> "$accumulated $finalText"
+                        !finalText.startsWith("🔇")                              -> finalText
+                        accumulated.isNotEmpty()                                  -> accumulated.toString()
+                        else                                                      -> "🔇 No speech detected"
+                    }
+                    broadcast(nodeId, result.trim())
+                } catch (e: Throwable) {
+                    try { recognizer.close() } catch (_: Throwable) {}
+                    broadcast(nodeId, if (accumulated.isNotEmpty()) accumulated.toString() else "🔇 No speech detected")
+                }
+
+                updateNotification("Ready — tap 🎙 in any chat overlay")
+
+            } catch (e: CancellationException) {
+                // Coroutine cancelled (user tapped Stop, or service destroyed).
+                // Must rethrow — swallowing CancellationException prevents the coroutine
+                // from terminating and hangs the job indefinitely.
+                try { recognizer.close() } catch (_: Throwable) {}
+                throw e
             } catch (e: Throwable) {
                 try { recognizer.close() } catch (_: Throwable) {}
-                broadcast(nodeId, if (accumulated.isNotEmpty()) accumulated.toString() else "🔇 No speech detected")
+                broadcast(nodeId, "❌ Capture error: ${e.message}")
+                stopCapture()
             }
-
-            updateNotification("Ready — tap 🎙 in any chat overlay")
-          } catch (e: Throwable) {
-              broadcast(nodeId, "❌ Capture error: ${e.message}")
-              stopCapture()
-          }
         }
     }
 

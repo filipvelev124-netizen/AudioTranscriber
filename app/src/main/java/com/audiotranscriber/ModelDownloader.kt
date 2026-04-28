@@ -37,14 +37,17 @@ object ModelDownloader {
 
             // Try each mirror in order until one succeeds
             var response = client.newCall(Request.Builder().url(MODEL_URLS[0]).build()).execute()
-            for (url in MODEL_URLS) {
-                response.close()
-                response = client.newCall(Request.Builder().url(url).build()).execute()
-                if (response.isSuccessful) break
+            if (!response.isSuccessful) {
+                for (url in MODEL_URLS.drop(1)) {
+                    response.close()
+                    response = client.newCall(Request.Builder().url(url).build()).execute()
+                    if (response.isSuccessful) break
+                }
             }
 
             if (!response.isSuccessful) {
-                withContext(Dispatchers.Main) { onError("All download sources returned HTTP ${response.code}. Check your internet connection.") }
+                response.close()
+                withContext(Dispatchers.Main) { onError("All download sources failed (HTTP ${response.code}). Check your internet connection.") }
                 return@withContext
             }
 
@@ -82,6 +85,10 @@ object ModelDownloader {
             withContext(Dispatchers.Main) { onComplete() }
 
         } catch (e: Exception) {
+            // Clean up any partial download or half-extracted files so the next
+            // attempt doesn't find a corrupt state
+            try { File(context.cacheDir, "vosk_model.zip").delete() } catch (_: Exception) {}
+            try { modelDir(context).deleteRecursively() } catch (_: Exception) {}
             withContext(Dispatchers.Main) { onError(e.message ?: "Unknown error") }
         }
     }
