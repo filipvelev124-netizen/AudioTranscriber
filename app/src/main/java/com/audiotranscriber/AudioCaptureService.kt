@@ -48,10 +48,28 @@ class AudioCaptureService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
-        try {
+        // Must call startForeground() within 5 s of startForegroundService() — if the rich
+        // notification throws (e.g. MIUI blocks channels), try a bare fallback. If even that
+        // fails, call stopSelf() immediately so the system doesn't crash us with
+        // ForegroundServiceDidNotStartInTimeException after the 5-second deadline.
+        if (!tryStartForeground()) stopSelf()
+    }
+
+    private fun tryStartForeground(): Boolean {
+        return try {
             createNotificationChannel()
             startForeground(NOTIFICATION_ID, buildNotification("Open app to finish setup"))
-        } catch (e: Throwable) { /* never crash on notification setup */ }
+            true
+        } catch (_: Throwable) {
+            try {
+                val bare = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle("Audio Transcriber")
+                    .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                    .build()
+                startForeground(NOTIFICATION_ID, bare)
+                true
+            } catch (_: Throwable) { false }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

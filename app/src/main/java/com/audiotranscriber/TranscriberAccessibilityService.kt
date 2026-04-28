@@ -126,6 +126,9 @@ class TranscriberAccessibilityService : AccessibilityService() {
     // Iterative BFS — avoids StackOverflowError on deeply-nested UIs (e.g. Instagram DMs).
     // Each child is recycled after visiting so we don't leak AccessibilityNodeInfo objects.
     private fun traverseTree(root: AccessibilityNodeInfo, visitor: (AccessibilityNodeInfo) -> Unit) {
+        // Use System.identityHashCode so we never accidentally recycle the root even if
+        // some ROM's getChild() returns the same object reference as the parent.
+        val rootId = System.identityHashCode(root)
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         var visited = 0
@@ -144,17 +147,16 @@ class TranscriberAccessibilityService : AccessibilityService() {
                 queue.add(child)
             }
 
-            // Recycle non-root nodes once we're done processing them.
-            // The root is owned by onAccessibilityEvent's finally block.
-            if (node !== root) {
+            // Recycle non-root nodes; root is owned by onAccessibilityEvent's finally block.
+            if (System.identityHashCode(node) != rootId) {
                 try { node.recycle() } catch (e: Throwable) { }
             }
         }
 
-        // Drain and recycle any nodes we never got to visit (hit the cap)
+        // Drain any un-visited nodes (hit the cap) and recycle them
         while (queue.isNotEmpty()) {
             val leftover = queue.poll() ?: continue
-            if (leftover !== root) {
+            if (System.identityHashCode(leftover) != rootId) {
                 try { leftover.recycle() } catch (e: Throwable) { }
             }
         }
@@ -195,12 +197,12 @@ class TranscriberAccessibilityService : AccessibilityService() {
     }
 
     private fun onTranscribeRequested(nodeId: String) {
-        if (!LocalTranscriber.isReady) {
-            overlayManager.updateTranscript(nodeId, "⏳ Model loading — wait a moment and try again")
-            return
-        }
-        overlayManager.setRecordingState(nodeId)
         try {
+            if (!LocalTranscriber.isReady) {
+                overlayManager.updateTranscript(nodeId, "⏳ Model loading — wait a moment and try again")
+                return
+            }
+            overlayManager.setRecordingState(nodeId)
             val intent = Intent(this, AudioCaptureService::class.java).apply {
                 action = AudioCaptureService.ACTION_START_CAPTURE
                 putExtra(AudioCaptureService.EXTRA_NODE_ID, nodeId)
@@ -208,13 +210,14 @@ class TranscriberAccessibilityService : AccessibilityService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
             else startService(intent)
         } catch (e: Throwable) {
-            overlayManager.updateTranscript(nodeId, "❌ Could not start capture: ${e.message}")
+            try { overlayManager.updateTranscript(nodeId, "❌ Could not start capture: ${e.message}") }
+            catch (_: Throwable) { }
         }
     }
 
     private fun onStopRequested(nodeId: String) {
-        overlayManager.setTranscribingState(nodeId)
         try {
+            overlayManager.setTranscribingState(nodeId)
             val intent = Intent(this, AudioCaptureService::class.java).apply {
                 action = AudioCaptureService.ACTION_STOP_CAPTURE
             }
