@@ -91,7 +91,15 @@ class AudioCaptureService : Service() {
         releaseAudioRecord()
 
         if (!LocalTranscriber.isReady) {
-            broadcast(nodeId, "⏳ Model loading — wait a moment and try again")
+            // Model not loaded yet — start loading it and auto-retry when done.
+            // This handles the case where the user taps Transcribe before the model
+            // finished loading (or if preloading was skipped to reduce startup weight).
+            try { broadcast(nodeId, "⏳ Loading model (first time only, ~10 sec)…") } catch (_: Throwable) {}
+            LocalTranscriber.initialize(
+                context = this,
+                onReady = { try { startCapture(nodeId) } catch (_: Throwable) {} },
+                onError = { e -> try { broadcast(nodeId, "❌ Model failed: $e — re-download in the app") } catch (_: Throwable) {} }
+            )
             return
         }
 
@@ -199,7 +207,7 @@ class AudioCaptureService : Service() {
                     broadcast(nodeId, result.trim())
                 } catch (e: Throwable) {
                     try { recognizer.close() } catch (_: Throwable) {}
-                    broadcast(nodeId, if (accumulated.isNotEmpty()) accumulated.toString() else "🔇 No speech detected")
+                    try { broadcast(nodeId, if (accumulated.isNotEmpty()) accumulated.toString() else "🔇 No speech detected") } catch (_: Throwable) {}
                 }
 
                 updateNotification("Ready — tap 🎙 in any chat overlay")
@@ -212,8 +220,8 @@ class AudioCaptureService : Service() {
                 throw e
             } catch (e: Throwable) {
                 try { recognizer.close() } catch (_: Throwable) {}
-                broadcast(nodeId, "❌ Capture error: ${e.message}")
-                stopCapture()
+                try { broadcast(nodeId, "❌ Capture error: ${e.message}") } catch (_: Throwable) {}
+                try { stopCapture() } catch (_: Throwable) {}
             }
         }
     }

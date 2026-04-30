@@ -29,6 +29,17 @@ object LocalTranscriber {
             return
         }
 
+        // Validate required subdirectories before calling Model() — an incomplete
+        // extraction (e.g. process killed mid-unzip) leaves the directory present but
+        // missing files. Passing such a path to Vosk causes a native C++ crash that
+        // cannot be caught by any Java try-catch. Delete the corrupt dir so the
+        // UI shows "not downloaded" and the user can re-download cleanly.
+        if (!ModelDownloader.isModelValid(context)) {
+            try { modelPath.deleteRecursively() } catch (_: Throwable) {}
+            mainHandler.post { onError("Model files are incomplete — please re-download in the app") }
+            return
+        }
+
         isLoading = true
         Thread {
             try {

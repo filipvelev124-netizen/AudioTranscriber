@@ -23,6 +23,16 @@ object ModelDownloader {
 
     fun isDownloaded(context: Context) = modelDir(context).exists()
 
+    // A valid Vosk model must have these subdirectories. A directory that exists
+    // but lacks them means the extraction was interrupted or partially completed —
+    // passing such a path to Model() causes a native crash that cannot be caught.
+    fun isModelValid(context: Context): Boolean {
+        val dir = modelDir(context)
+        return dir.isDirectory &&
+               File(dir, "am").isDirectory &&
+               File(dir, "conf").isDirectory
+    }
+
     suspend fun download(
         context: Context,
         onProgress: (Int) -> Unit,   // 0–100 while downloading, -1 while extracting
@@ -84,11 +94,11 @@ object ModelDownloader {
 
             withContext(Dispatchers.Main) { onComplete() }
 
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             // Clean up any partial download or half-extracted files so the next
             // attempt doesn't find a corrupt state
-            try { File(context.cacheDir, "vosk_model.zip").delete() } catch (_: Exception) {}
-            try { modelDir(context).deleteRecursively() } catch (_: Exception) {}
+            try { File(context.cacheDir, "vosk_model.zip").delete() } catch (_: Throwable) {}
+            try { modelDir(context).deleteRecursively() } catch (_: Throwable) {}
             withContext(Dispatchers.Main) { onError(e.message ?: "Unknown error") }
         }
     }

@@ -46,10 +46,9 @@ class TranscriberAccessibilityService : AccessibilityService() {
         try {
             registerReceivers()
         } catch (e: Throwable) { }
-
-        try {
-            LocalTranscriber.initialize(context = this, onReady = {}, onError = {})
-        } catch (e: Throwable) { }
+        // Model is loaded lazily in AudioCaptureService when the user first taps
+        // Transcribe. Preloading it here races with MainActivity's own initialize()
+        // call and doubles memory pressure during service startup on low-RAM devices.
     }
 
     private fun registerReceivers() {
