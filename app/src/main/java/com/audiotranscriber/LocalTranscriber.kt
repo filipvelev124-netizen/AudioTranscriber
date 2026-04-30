@@ -1,38 +1,51 @@
 package com.audiotranscriber
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import org.vosk.Model
 import org.vosk.Recognizer
 
 object LocalTranscriber {
 
-    // @Volatile so the IO dispatcher sees the value written by the background loader thread
     @Volatile private var model: Model? = null
     @Volatile var isReady = false
         private set
+    // Prevents a second background thread while the first is still loading.
+    // Both MainActivity and the accessibility service call initialize() on startup
+    // before isReady is true — without this guard they'd each start a thread,
+    // load two Model objects simultaneously, and risk OOM on low-RAM devices.
+    @Volatile private var isLoading = false
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun initialize(context: Context, onReady: () -> Unit, onError: (String) -> Unit) {
-        // Guard against double-loading — called from both MainActivity and the
-        // accessibility service; without this, two Model objects would be created
-        // simultaneously and the first one would leak
-        if (isReady) { onReady(); return }
+        if (isReady) { mainHandler.post { onReady() }; return }
+        if (isLoading) return
+
         val modelPath = ModelDownloader.modelDir(context)
         if (!modelPath.exists()) {
-            onError("Model not found — download it first")
+            mainHandler.post { onError("Model not found — download it first") }
             return
         }
+
+        isLoading = true
         Thread {
             try {
                 model = Model(modelPath.absolutePath)
                 isReady = true
-                onReady()
+                isLoading = false
+                // Must dispatch to main thread. Callers (e.g. MainActivity) pass
+                // UI-updating lambdas. Calling them from a background thread throws
+                // CalledFromWrongThreadException; that exception escapes the catch block
+                // and the JVM default uncaught handler kills the entire process.
+                mainHandler.post { onReady() }
             } catch (e: Throwable) {
-                // Throwable (not Exception) is required here — the Vosk JNI layer can throw
-                // UnsatisfiedLinkError or OutOfMemoryError which extend Error, not Exception,
-                // and would otherwise escape this handler and crash the entire process
-                onError("Failed to load model: ${e.message}")
+                // Throwable catches UnsatisfiedLinkError / OutOfMemoryError from Vosk JNI
+                isLoading = false
+                mainHandler.post { onError("Failed to load model: ${e.message}") }
             }
-        }.start()
+        }.apply { name = "vosk-model-loader" }.start()
     }
 
     fun createRecognizer(sampleRate: Float): Recognizer? {

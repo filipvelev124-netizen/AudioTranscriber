@@ -227,19 +227,19 @@ class AudioCaptureService : Service() {
     }
 
     private fun releaseAudioRecord() {
-        try { audioRecord?.stop() } catch (_: Exception) {}
-        try { audioRecord?.release() } catch (_: Exception) {}
+        try { audioRecord?.stop() } catch (_: Throwable) {}
+        try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
     }
 
     private fun buildMicCapture(): AudioRecord? {
-        val bufSize = maxOf(
-            AudioRecord.getMinBufferSize(
-                SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
-            ) * 4, 16_384
+        val minBuf = AudioRecord.getMinBufferSize(
+            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
         )
+        // getMinBufferSize returns ERROR (-1) or ERROR_BAD_VALUE (-2) on unsupported configs;
+        // multiplying a negative value by 4 would produce a negative buffer size and crash
+        // the AudioRecord constructor, so fall back to a safe default when that happens.
+        val bufSize = if (minBuf > 0) maxOf(minBuf * 4, 16_384) else 16_384
         return try {
             AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
@@ -248,7 +248,7 @@ class AudioCaptureService : Service() {
                 AudioFormat.ENCODING_PCM_16BIT,
                 bufSize
             ).takeIf { it.state == AudioRecord.STATE_INITIALIZED }
-        } catch (_: Exception) { null }
+        } catch (_: Throwable) { null }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -298,6 +298,6 @@ class AudioCaptureService : Service() {
         try {
             getSystemService(NotificationManager::class.java)
                 .notify(NOTIFICATION_ID, buildNotification(text))
-        } catch (_: Exception) {}
+        } catch (_: Throwable) {}
     }
 }
