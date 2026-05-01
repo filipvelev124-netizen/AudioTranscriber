@@ -35,8 +35,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var tvProgress: TextView
 
-    private val micPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
+    // Request RECORD_AUDIO + POST_NOTIFICATIONS together.
+    // POST_NOTIFICATIONS (Android 13+) is required for startForeground() to show
+    // a visible notification. Without a visible notification, MIUI treats the service
+    // as a background process and force-kills it, producing "keeps stopping" crashes.
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { _ -> refreshStatus() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,10 +67,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        // Request microphone permission on first launch — needed for audio capture
-        if (!hasMicPermission()) {
-            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
+        requestMissingPermissions()
     }
 
     override fun onResume() {
@@ -77,6 +78,15 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         scope.cancel()
         super.onDestroy()
+    }
+
+    private fun requestMissingPermissions() {
+        val needed = mutableListOf<String>()
+        if (!hasMicPermission()) needed.add(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission()) {
+            needed.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (needed.isNotEmpty()) permissionLauncher.launch(needed.toTypedArray())
     }
 
     // ── Status ────────────────────────────────────────────────────────────────
@@ -122,6 +132,12 @@ class MainActivity : AppCompatActivity() {
     private fun hasMicPermission() =
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
+
+    private fun hasNotificationPermission() =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
+        } else true
 
     private fun isAccessibilityEnabled(): Boolean {
         val am = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager

@@ -38,6 +38,7 @@ class TranscriberAccessibilityService : AccessibilityService() {
     }
 
     override fun onServiceConnected() {
+        super.onServiceConnected()
         try {
             createNotificationChannel()
             startForeground(NOTIFICATION_ID, buildNotification())
