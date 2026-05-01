@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -42,6 +43,10 @@ class OverlayManager(private val context: Context) {
         onStopClick: () -> Unit
     ) {
         mainHandler.post {
+            // Skip immediately if SYSTEM_ALERT_WINDOW was revoked mid-session (MIUI does this).
+            // Checking here avoids inflating the layout only to fail on addView().
+            if (!Settings.canDrawOverlays(context)) return@post
+
             // Remove any existing overlay for this nodeId synchronously — we are already
             // on the main thread (inside mainHandler.post), so calling removeOverlay() here
             // would re-post a second lambda that runs AFTER we add the new overlay, deleting
