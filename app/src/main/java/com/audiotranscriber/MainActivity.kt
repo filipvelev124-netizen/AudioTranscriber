@@ -1,14 +1,10 @@
 package com.audiotranscriber
 
 import android.Manifest
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
-import android.view.accessibility.AccessibilityManager
 import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -27,11 +23,11 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private lateinit var tvModelStatus: TextView
-    private lateinit var tvAccessibilityStatus: TextView
-    private lateinit var tvOverlayStatus: TextView
+    private lateinit var tvPermissionsStatus: TextView
+    private lateinit var tvServiceStatus: TextView
     private lateinit var btnDownloadModel: Button
-    private lateinit var btnAccessibility: Button
-    private lateinit var btnOverlay: Button
+    private lateinit var btnPermissions: Button
+    private lateinit var btnService: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var tvProgress: TextView
 
@@ -47,25 +43,18 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        tvModelStatus         = findViewById(R.id.tvModelStatus)
-        tvAccessibilityStatus = findViewById(R.id.tvAccessibilityStatus)
-        tvOverlayStatus       = findViewById(R.id.tvOverlayStatus)
-        btnDownloadModel      = findViewById(R.id.btnDownloadModel)
-        btnAccessibility      = findViewById(R.id.btnAccessibility)
-        btnOverlay            = findViewById(R.id.btnOverlay)
-        progressBar           = findViewById(R.id.progressBar)
-        tvProgress            = findViewById(R.id.tvProgress)
+        tvModelStatus       = findViewById(R.id.tvModelStatus)
+        tvPermissionsStatus = findViewById(R.id.tvPermissionsStatus)
+        tvServiceStatus     = findViewById(R.id.tvServiceStatus)
+        btnDownloadModel    = findViewById(R.id.btnDownloadModel)
+        btnPermissions      = findViewById(R.id.btnPermissions)
+        btnService          = findViewById(R.id.btnService)
+        progressBar         = findViewById(R.id.progressBar)
+        tvProgress          = findViewById(R.id.tvProgress)
 
         btnDownloadModel.setOnClickListener { downloadModel() }
-        btnAccessibility.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-        btnOverlay.setOnClickListener {
-            startActivity(
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName"))
-            )
-        }
+        btnPermissions.setOnClickListener { requestMissingPermissions() }
+        btnService.setOnClickListener { toggleService() }
 
         requestMissingPermissions()
     }
@@ -89,6 +78,24 @@ class MainActivity : AppCompatActivity() {
         if (needed.isNotEmpty()) permissionLauncher.launch(needed.toTypedArray())
     }
 
+    private fun toggleService() {
+        if (AudioCaptureService.isRunning) {
+            sendServiceAction(AudioCaptureService.ACTION_STOP_SERVICE)
+        } else {
+            sendServiceAction(AudioCaptureService.ACTION_START_CAPTURE)
+        }
+        // Refresh after a short delay to let the service update its flag
+        btnService.postDelayed({ refreshStatus() }, 400)
+    }
+
+    private fun sendServiceAction(action: String) {
+        try {
+            val intent = Intent(this, AudioCaptureService::class.java).apply { this.action = action }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+            else startService(intent)
+        } catch (_: Throwable) {}
+    }
+
     // ── Status ────────────────────────────────────────────────────────────────
 
     private fun refreshStatus() {
@@ -101,25 +108,40 @@ class MainActivity : AppCompatActivity() {
             btnDownloadModel.text = "Download model  (~45 MB, one-time)"
         }
 
-        // Step 2: accessibility
-        if (isAccessibilityEnabled()) {
-            tvAccessibilityStatus.text = "Accessibility service: ✅ Active"
-            btnAccessibility.text = "Manage accessibility settings"
-        } else {
-            tvAccessibilityStatus.text = "Accessibility service: ❌ Not enabled"
-            btnAccessibility.text = "Enable accessibility service"
+        // Step 2: permissions
+        val micOk  = hasMicPermission()
+        val notifOk = hasNotificationPermission()
+        when {
+            micOk && notifOk -> {
+                tvPermissionsStatus.text = "Permissions: ✅ All granted"
+                btnPermissions.text = "Permissions granted"
+                btnPermissions.isEnabled = false
+            }
+            micOk -> {
+                tvPermissionsStatus.text = "Permissions: ⚠️ Notifications not granted"
+                btnPermissions.text = "Grant notification permission"
+                btnPermissions.isEnabled = true
+            }
+            else -> {
+                tvPermissionsStatus.text = "Permissions: ❌ Microphone not granted"
+                btnPermissions.text = "Grant permissions"
+                btnPermissions.isEnabled = true
+            }
         }
 
-        // Step 3: overlay
-        if (Settings.canDrawOverlays(this)) {
-            tvOverlayStatus.text = "Overlay permission: ✅ Granted"
-            btnOverlay.text = "Manage overlay permission"
+        // Step 3: service
+        if (AudioCaptureService.isRunning) {
+            tvServiceStatus.text = if (AudioCaptureService.isRecording)
+                "Service: 🔴 Recording…"
+            else
+                "Service: ✅ Running (use notification to transcribe)"
+            btnService.text = "Stop service"
         } else {
-            tvOverlayStatus.text = "Overlay permission: ❌ Not granted"
-            btnOverlay.text = "Grant overlay permission"
+            tvServiceStatus.text = "Service: ❌ Not running"
+            btnService.text = "Start service"
         }
 
-        // Load model into memory if downloaded but not yet loaded
+        // Pre-load model into memory if downloaded but not yet loaded
         if (ModelDownloader.isDownloaded(this) && !LocalTranscriber.isReady) {
             LocalTranscriber.initialize(
                 context = this,
@@ -138,12 +160,6 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
                     PackageManager.PERMISSION_GRANTED
         } else true
-
-    private fun isAccessibilityEnabled(): Boolean {
-        val am = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
-        return am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-            .any { it.resolveInfo.serviceInfo.packageName == packageName }
-    }
 
     // ── Model download ────────────────────────────────────────────────────────
 

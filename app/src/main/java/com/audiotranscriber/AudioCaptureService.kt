@@ -5,7 +5,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -27,11 +32,8 @@ class AudioCaptureService : Service() {
     companion object {
         const val ACTION_START_CAPTURE = "com.audiotranscriber.START_CAPTURE"
         const val ACTION_STOP_CAPTURE  = "com.audiotranscriber.STOP_CAPTURE"
-
-        const val EXTRA_NODE_ID    = "node_id"
-        const val EXTRA_TRANSCRIPT = "transcript"
-
-        const val BROADCAST_RESULT = "com.audiotranscriber.TRANSCRIPT_RESULT"
+        const val ACTION_COPY_RESULT   = "com.audiotranscriber.COPY_RESULT"
+        const val ACTION_STOP_SERVICE  = "com.audiotranscriber.STOP_SERVICE"
 
         const val CHANNEL_ID      = "capture_channel"
         const val NOTIFICATION_ID = 42
@@ -39,128 +41,144 @@ class AudioCaptureService : Service() {
 
         @Volatile var isRecording = false
             private set
+        @Volatile var isRunning   = false
+            private set
+
+        private const val SILENCE_THRESHOLD = 150.0
+        private const val SILENCE_GAP_MS    = 2_000L
+        private const val STARTUP_TIMEOUT   = 15_000L
+        private const val HARD_LIMIT_MS     = 90_000L
+        private const val NOTIF_THROTTLE_MS = 1_500L
     }
 
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // Stores the last transcription result so the copy action can read it
+    // without needing to pass data inside a PendingIntent
+    private var lastResult = ""
+    private var copyReceiverRegistered = false
+
+    private val copyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            try {
+                if (lastResult.isEmpty()) return
+                val cb = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cb.setPrimaryClip(ClipData.newPlainText("Transcript", lastResult))
+                notify(buildResultNotification(lastResult, copied = true))
+            } catch (_: Throwable) {}
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
-        // Must call startForeground() within 5 s of startForegroundService() — if the rich
-        // notification throws (e.g. MIUI blocks channels), try a bare fallback. If even that
-        // fails, call stopSelf() immediately so the system doesn't crash us with
-        // ForegroundServiceDidNotStartInTimeException after the 5-second deadline.
-        if (!tryStartForeground()) stopSelf()
+        isRunning = true
+        if (!tryStartForeground()) { isRunning = false; stopSelf(); return }
+        registerCopyReceiver()
     }
 
     private fun tryStartForeground(): Boolean {
         return try {
-            createNotificationChannel()
-            startForeground(NOTIFICATION_ID, buildNotification("Open app to finish setup"))
+            createChannel()
+            startForeground(NOTIFICATION_ID, buildIdleNotification())
             true
         } catch (_: Throwable) {
             try {
-                val bare = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("Audio Transcriber")
-                    .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                    .build()
-                startForeground(NOTIFICATION_ID, bare)
+                // Bare-minimum fallback — if even this fails, stopSelf() prevents the
+                // ForegroundServiceDidNotStartInTimeException system crash
+                startForeground(NOTIFICATION_ID,
+                    NotificationCompat.Builder(this, CHANNEL_ID)
+                        .setContentTitle("Audio Transcriber")
+                        .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                        .build())
                 true
             } catch (_: Throwable) { false }
         }
     }
 
+    private fun registerCopyReceiver() {
+        if (copyReceiverRegistered) return
+        try {
+            val filter = IntentFilter(ACTION_COPY_RESULT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(copyReceiver, filter, RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(copyReceiver, filter)
+            }
+            copyReceiverRegistered = true
+        } catch (_: Throwable) {}
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START_CAPTURE -> {
-                val nodeId = intent.getStringExtra(EXTRA_NODE_ID)
-                    ?.takeIf { it.length <= 256 } ?: return START_STICKY
-                startCapture(nodeId)
-            }
-            ACTION_STOP_CAPTURE -> stopCapture()
+            ACTION_START_CAPTURE -> startCapture()
+            ACTION_STOP_CAPTURE  -> stopCapture()
+            ACTION_STOP_SERVICE  -> { stopCapture(); isRunning = false; stopSelf() }
         }
         return START_STICKY
     }
 
-    // ── Real-time microphone capture + Vosk streaming ─────────────────────────
+    // ── Capture ───────────────────────────────────────────────────────────────
 
-    private fun startCapture(nodeId: String) {
+    private fun startCapture() {
         captureJob?.cancel()
         releaseAudioRecord()
 
         if (!LocalTranscriber.isReady) {
-            // Model not loaded yet — start loading it and auto-retry when done.
-            // This handles the case where the user taps Transcribe before the model
-            // finished loading (or if preloading was skipped to reduce startup weight).
-            try { broadcast(nodeId, "⏳ Loading model (first time only, ~10 sec)…") } catch (_: Throwable) {}
+            notify(buildIdleNotification("⏳ Loading model (first time, ~10 sec)…"))
             LocalTranscriber.initialize(
                 context = this,
-                onReady = { try { startCapture(nodeId) } catch (_: Throwable) {} },
-                onError = { e -> try { broadcast(nodeId, "❌ Model failed: $e — re-download in the app") } catch (_: Throwable) {} }
+                onReady = { try { startCapture() } catch (_: Throwable) {} },
+                onError = { e -> try { notify(buildIdleNotification("❌ Model failed — re-download in the app")) } catch (_: Throwable) {} }
             )
             return
         }
 
         val recognizer = LocalTranscriber.createRecognizer(SAMPLE_RATE.toFloat()) ?: run {
-            broadcast(nodeId, "⏳ Model not ready yet")
+            notify(buildIdleNotification("❌ Could not start recognizer"))
             return
         }
 
         val record = buildMicCapture() ?: run {
             recognizer.close()
-            broadcast(nodeId, "❌ Microphone unavailable — open the app and grant microphone permission")
+            notify(buildIdleNotification("❌ Microphone unavailable — check permission in app"))
             return
         }
 
         audioRecord = record
         isRecording = true
         record.startRecording()
-        updateNotification("🔴 Recording… play the message now")
+        notify(buildRecordingNotification("Play the voice message now…"))
 
         captureJob = scope.launch {
             try {
-                val buf = ShortArray(4_096)
-                val startMs           = System.currentTimeMillis()
-                var lastLoudMs        = startMs
-                var audioEverDetected = false
-                var lastPartialMs     = 0L
-                val accumulated       = StringBuilder()
-
-                val silenceRmsThreshold = 150.0
-                val silenceGapMs        = 2_000L
-                val startupTimeoutMs    = 15_000L
-                val hardLimitMs         = 90_000L
-                val partialIntervalMs   = 300L
+                val buf       = ShortArray(4_096)
+                val startMs   = System.currentTimeMillis()
+                var lastLoud  = startMs
+                var gotAudio  = false
+                var lastNotif = 0L
+                val accumulated = StringBuilder()
 
                 while (isActive) {
                     val now     = System.currentTimeMillis()
                     val elapsed = now - startMs
-
-                    if (elapsed > hardLimitMs) break
+                    if (elapsed > HARD_LIMIT_MS) break
 
                     val read = record.read(buf, 0, buf.size)
                     if (read <= 0) continue
 
-                    // RMS for silence detection
                     var sum = 0.0
                     for (i in 0 until read) sum += buf[i].toDouble() * buf[i]
-                    val rms = sqrt(sum / read)
+                    if (sqrt(sum / read) > SILENCE_THRESHOLD) { gotAudio = true; lastLoud = now }
 
-                    if (rms > silenceRmsThreshold) {
-                        audioEverDetected = true
-                        lastLoudMs = now
-                    }
-
-                    if (!audioEverDetected && elapsed > startupTimeoutMs) {
-                        broadcast(nodeId, "⏰ No audio detected. Tap 🎙 then immediately play the voice message.")
+                    if (!gotAudio && elapsed > STARTUP_TIMEOUT) {
+                        notify(buildIdleNotification("⏰ No audio — play the message louder or closer to the mic"))
                         break
                     }
+                    if (gotAudio && (now - lastLoud) > SILENCE_GAP_MS) break
 
-                    if (audioEverDetected && (now - lastLoudMs) > silenceGapMs) break
-
-                    // Feed PCM chunk to Vosk and stream partial results in real-time
                     try {
                         val bytes = ByteArray(read * 2)
                         for (i in 0 until read) {
@@ -172,66 +190,63 @@ class AudioCaptureService : Service() {
                             if (!text.startsWith("🔇")) {
                                 if (accumulated.isNotEmpty()) accumulated.append(" ")
                                 accumulated.append(text)
-                                broadcast(nodeId, accumulated.toString())
-                            }
-                        } else if (now - lastPartialMs > partialIntervalMs) {
-                            lastPartialMs = now
-                            val partial = LocalTranscriber.parsePartial(recognizer.partialResult)
-                            if (partial.isNotEmpty()) {
-                                val display = buildString {
-                                    if (accumulated.isNotEmpty()) append(accumulated).append(" ")
-                                    append("🎙 ").append(partial).append("…")
-                                }
-                                broadcast(nodeId, display)
                             }
                         }
-                    } catch (e: Throwable) { /* Vosk feed error — skip chunk, keep recording */ }
+                        if (accumulated.isNotEmpty() && now - lastNotif > NOTIF_THROTTLE_MS) {
+                            lastNotif = now
+                            notify(buildRecordingNotification("🎙 $accumulated…"))
+                        }
+                    } catch (_: Throwable) {}
                 }
 
-                if (!isActive) {
-                    try { recognizer.close() } catch (_: Throwable) {}
-                    return@launch
-                }
+                if (!isActive) { try { recognizer.close() } catch (_: Throwable) {}; return@launch }
 
-                stopCapture()
+                isRecording = false
+                releaseAudioRecord()
 
                 try {
-                    val finalText = LocalTranscriber.parseResult(recognizer.finalResult)
-                    recognizer.close()
-                    val result = when {
-                        !finalText.startsWith("🔇") && accumulated.isNotEmpty() -> "$accumulated $finalText"
-                        !finalText.startsWith("🔇")                              -> finalText
-                        accumulated.isNotEmpty()                                  -> accumulated.toString()
-                        else                                                      -> "🔇 No speech detected"
-                    }
-                    broadcast(nodeId, result.trim())
-                } catch (e: Throwable) {
+                    val final = LocalTranscriber.parseResult(recognizer.finalResult)
                     try { recognizer.close() } catch (_: Throwable) {}
-                    try { broadcast(nodeId, if (accumulated.isNotEmpty()) accumulated.toString() else "🔇 No speech detected") } catch (_: Throwable) {}
+                    val result = when {
+                        !final.startsWith("🔇") && accumulated.isNotEmpty() -> "$accumulated $final".trim()
+                        !final.startsWith("🔇")                              -> final
+                        accumulated.isNotEmpty()                              -> accumulated.toString()
+                        else                                                  -> ""
+                    }
+                    if (result.isEmpty()) {
+                        notify(buildIdleNotification("🔇 No speech detected — tap to try again"))
+                    } else {
+                        lastResult = result
+                        notify(buildResultNotification(result, copied = false))
+                    }
+                } catch (_: Throwable) {
+                    try { recognizer.close() } catch (_: Throwable) {}
+                    if (accumulated.isNotEmpty()) {
+                        lastResult = accumulated.toString()
+                        try { notify(buildResultNotification(accumulated.toString(), copied = false)) } catch (_: Throwable) {}
+                    } else {
+                        try { notify(buildIdleNotification("🔇 No speech detected")) } catch (_: Throwable) {}
+                    }
                 }
 
-                updateNotification("Ready — tap 🎙 in any chat overlay")
-
             } catch (e: CancellationException) {
-                // Coroutine cancelled (user tapped Stop, or service destroyed).
-                // Must rethrow — swallowing CancellationException prevents the coroutine
-                // from terminating and hangs the job indefinitely.
                 try { recognizer.close() } catch (_: Throwable) {}
                 throw e
             } catch (e: Throwable) {
                 try { recognizer.close() } catch (_: Throwable) {}
-                try { broadcast(nodeId, "❌ Capture error: ${e.message}") } catch (_: Throwable) {}
-                try { stopCapture() } catch (_: Throwable) {}
+                isRecording = false
+                try { releaseAudioRecord() } catch (_: Throwable) {}
+                try { notify(buildIdleNotification()) } catch (_: Throwable) {}
             }
         }
     }
 
     fun stopCapture() {
-        captureJob?.cancel()
+        try { captureJob?.cancel() } catch (_: Throwable) {}
         captureJob = null
-        releaseAudioRecord()
         isRecording = false
-        updateNotification("Ready — tap 🎙 in any chat overlay")
+        releaseAudioRecord()
+        try { notify(buildIdleNotification()) } catch (_: Throwable) {}
     }
 
     private fun releaseAudioRecord() {
@@ -241,71 +256,100 @@ class AudioCaptureService : Service() {
     }
 
     private fun buildMicCapture(): AudioRecord? {
-        val minBuf = AudioRecord.getMinBufferSize(
-            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
-        )
-        // getMinBufferSize returns ERROR (-1) or ERROR_BAD_VALUE (-2) on unsupported configs;
-        // multiplying a negative value by 4 would produce a negative buffer size and crash
-        // the AudioRecord constructor, so fall back to a safe default when that happens.
+        val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val bufSize = if (minBuf > 0) maxOf(minBuf * 4, 16_384) else 16_384
         return try {
             AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufSize
+                MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize
             ).takeIf { it.state == AudioRecord.STATE_INITIALIZED }
         } catch (_: Throwable) { null }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private fun broadcast(nodeId: String, transcript: String) {
-        sendBroadcast(Intent(BROADCAST_RESULT).apply {
-            setPackage(packageName)
-            putExtra(EXTRA_NODE_ID, nodeId)
-            putExtra(EXTRA_TRANSCRIPT, transcript)
-        })
-    }
-
     override fun onDestroy() {
+        isRunning = false
         isRecording = false
-        stopCapture()
-        scope.cancel()
+        try { captureJob?.cancel() } catch (_: Throwable) {}
+        try { scope.cancel() } catch (_: Throwable) {}
+        try { releaseAudioRecord() } catch (_: Throwable) {}
+        if (copyReceiverRegistered) try { unregisterReceiver(copyReceiver) } catch (_: Throwable) {}
         super.onDestroy()
     }
 
-    // ── Notification ──────────────────────────────────────────────────────────
+    // ── Notifications ─────────────────────────────────────────────────────────
 
-    private fun createNotificationChannel() {
+    private fun notify(n: Notification) {
+        try { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, n) }
+        catch (_: Throwable) {}
+    }
+
+    private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(CHANNEL_ID, "Audio Capture", NotificationManager.IMPORTANCE_LOW)
+            val ch = NotificationChannel(CHANNEL_ID, "Audio Transcriber", NotificationManager.IMPORTANCE_LOW)
+                .apply { setShowBadge(false) }
             getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
         }
     }
 
-    private fun buildNotification(text: String): Notification {
-        val openApp = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            },
-            PendingIntent.FLAG_IMMUTABLE
+    private fun openAppIntent() = PendingIntent.getActivity(
+        this, 0,
+        Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        },
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
+
+    private fun serviceAction(action: String, label: String): NotificationCompat.Action {
+        val pi = PendingIntent.getService(
+            this, action.hashCode(),
+            Intent(this, AudioCaptureService::class.java).apply { this.action = action },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Audio Transcriber")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentIntent(openApp)
-            .setOngoing(true)
-            .build()
+        return NotificationCompat.Action(0, label, pi)
     }
 
-    private fun updateNotification(text: String) {
-        try {
-            getSystemService(NotificationManager::class.java)
-                .notify(NOTIFICATION_ID, buildNotification(text))
-        } catch (_: Throwable) {}
-    }
+    private fun copyAction() = NotificationCompat.Action(0, "📋 Copy",
+        PendingIntent.getBroadcast(
+            this, 0,
+            Intent(ACTION_COPY_RESULT).apply { setPackage(packageName) },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    )
+
+    private fun buildIdleNotification(text: String = "Tap 🎙 Transcribe, then play the voice message") =
+        NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Audio Transcriber — Ready")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentIntent(openAppIntent())
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(serviceAction(ACTION_START_CAPTURE, "🎙 Transcribe"))
+            .addAction(serviceAction(ACTION_STOP_SERVICE, "✕ Stop service"))
+            .build()
+
+    private fun buildRecordingNotification(text: String) =
+        NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("🔴 Recording")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentIntent(openAppIntent())
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(serviceAction(ACTION_STOP_CAPTURE, "⏹ Stop"))
+            .build()
+
+    private fun buildResultNotification(result: String, copied: Boolean) =
+        NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(if (copied) "✅ Copied to clipboard" else "Transcription complete")
+            .setContentText(result)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(result))
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentIntent(openAppIntent())
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .addAction(copyAction())
+            .addAction(serviceAction(ACTION_START_CAPTURE, "🎙 Transcribe again"))
+            .addAction(serviceAction(ACTION_STOP_SERVICE, "✕ Stop service"))
+            .build()
 }
