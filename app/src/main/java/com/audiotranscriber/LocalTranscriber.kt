@@ -13,16 +13,29 @@ object LocalTranscriber {
     private var model: Model? = null
     @Volatile var isReady = false
         private set
+    private var loadedLanguage: Language? = null
 
-    fun initialize(context: Context, onReady: () -> Unit, onError: (String) -> Unit) {
-        val modelPath = ModelDownloader.modelDir(context)
+    fun isLoadedFor(language: Language) = isReady && loadedLanguage == language
+
+    fun initialize(
+        context: Context,
+        language: Language,
+        onReady: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (isLoadedFor(language)) { onReady(); return }
+
+        val modelPath = ModelDownloader.modelDir(context, language)
         if (!modelPath.exists()) {
             onError("Model not found — download it first")
             return
         }
         try {
+            model = null
+            isReady = false
             model = Model(modelPath.absolutePath)
             isReady = true
+            loadedLanguage = language
             onReady()
         } catch (e: Exception) {
             onError("Failed to load model: ${e.message}")

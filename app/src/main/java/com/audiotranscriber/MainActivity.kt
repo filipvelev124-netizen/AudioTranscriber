@@ -2,6 +2,7 @@ package com.audiotranscriber
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -9,8 +10,10 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ProgressBar
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +28,7 @@ class MainActivity : AppCompatActivity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    private lateinit var spinnerLanguage: Spinner
     private lateinit var tvModelStatus: TextView
     private lateinit var tvAccessibilityStatus: TextView
     private lateinit var tvOverlayStatus: TextView
@@ -36,7 +40,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var tvProgress: TextView
 
-    // Modern Activity Result API for MediaProjection permission
+    private var selectedLanguage: Language = Language.ENGLISH
+
     private val projectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -51,16 +56,21 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        tvModelStatus       = findViewById(R.id.tvModelStatus)
-        tvAccessibilityStatus = findViewById(R.id.tvAccessibilityStatus)
-        tvOverlayStatus     = findViewById(R.id.tvOverlayStatus)
-        tvCaptureStatus     = findViewById(R.id.tvCaptureStatus)
-        btnDownloadModel    = findViewById(R.id.btnDownloadModel)
-        btnAccessibility    = findViewById(R.id.btnAccessibility)
-        btnOverlay          = findViewById(R.id.btnOverlay)
-        btnAudioCapture     = findViewById(R.id.btnAudioCapture)
-        progressBar         = findViewById(R.id.progressBar)
-        tvProgress          = findViewById(R.id.tvProgress)
+        ModelDownloader.migrateOldModel(this)
+
+        spinnerLanguage         = findViewById(R.id.spinnerLanguage)
+        tvModelStatus           = findViewById(R.id.tvModelStatus)
+        tvAccessibilityStatus   = findViewById(R.id.tvAccessibilityStatus)
+        tvOverlayStatus         = findViewById(R.id.tvOverlayStatus)
+        tvCaptureStatus         = findViewById(R.id.tvCaptureStatus)
+        btnDownloadModel        = findViewById(R.id.btnDownloadModel)
+        btnAccessibility        = findViewById(R.id.btnAccessibility)
+        btnOverlay              = findViewById(R.id.btnOverlay)
+        btnAudioCapture         = findViewById(R.id.btnAudioCapture)
+        progressBar             = findViewById(R.id.progressBar)
+        tvProgress              = findViewById(R.id.tvProgress)
+
+        setupLanguageSpinner()
 
         btnDownloadModel.setOnClickListener { downloadModel() }
         btnAccessibility.setOnClickListener {
@@ -74,7 +84,6 @@ class MainActivity : AppCompatActivity() {
         }
         btnAudioCapture.setOnClickListener { requestAudioCapturePermission() }
 
-        // If launched by the accessibility service requesting projection
         if (intent?.getBooleanExtra("request_projection", false) == true) {
             requestAudioCapturePermission()
         }
@@ -90,16 +99,55 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    // ── Language spinner ──────────────────────────────────────────────────────
+
+    private fun setupLanguageSpinner() {
+        val languages = Language.entries
+        selectedLanguage = loadSavedLanguage()
+
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            languages.map { it.displayName }
+        ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+
+        spinnerLanguage.adapter = adapter
+        spinnerLanguage.setSelection(languages.indexOf(selectedLanguage))
+
+        spinnerLanguage.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                val picked = languages[position]
+                if (picked != selectedLanguage) {
+                    selectedLanguage = picked
+                    saveLanguage(picked)
+                    refreshStatus()
+                }
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+        }
+    }
+
+    private fun loadSavedLanguage(): Language {
+        val code = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREF_LANGUAGE, Language.ENGLISH.code) ?: Language.ENGLISH.code
+        return Language.fromCode(code)
+    }
+
+    private fun saveLanguage(language: Language) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString(PREF_LANGUAGE, language.code).apply()
+    }
+
     // ── Status ────────────────────────────────────────────────────────────────
 
     private fun refreshStatus() {
-        // Step 1: model
-        if (ModelDownloader.isDownloaded(this)) {
-            tvModelStatus.text = "Speech model: ✅ Downloaded"
-            btnDownloadModel.text = "Re-download model"
+        // Step 1: model (language-specific)
+        if (ModelDownloader.isDownloaded(this, selectedLanguage)) {
+            tvModelStatus.text = "Speech model: ✅ Downloaded (${selectedLanguage.displayName})"
+            btnDownloadModel.text = "Re-download ${selectedLanguage.displayName} model"
         } else {
             tvModelStatus.text = "Speech model: ❌ Not downloaded"
-            btnDownloadModel.text = "Download model  (~45 MB, one-time)"
+            btnDownloadModel.text = "Download ${selectedLanguage.displayName} model  (~${selectedLanguage.approxSizeMb} MB, one-time)"
         }
 
         // Step 2: accessibility
@@ -129,11 +177,13 @@ class MainActivity : AppCompatActivity() {
             btnAudioCapture.text = "Enable audio capture"
         }
 
-        // Load model into memory if ready
-        if (ModelDownloader.isDownloaded(this) && !LocalTranscriber.isReady) {
+        // Load model into memory if downloaded and not already loaded for this language
+        if (ModelDownloader.isDownloaded(this, selectedLanguage) &&
+            !LocalTranscriber.isLoadedFor(selectedLanguage)) {
             LocalTranscriber.initialize(
                 context = this,
-                onReady = { tvModelStatus.text = "Speech model: ✅ Loaded" },
+                language = selectedLanguage,
+                onReady = { tvModelStatus.text = "Speech model: ✅ Loaded (${selectedLanguage.displayName})" },
                 onError = { e -> tvModelStatus.text = "Speech model: ⚠️ $e" }
             )
         }
@@ -174,9 +224,12 @@ class MainActivity : AppCompatActivity() {
         progressBar.isVisible = true
         tvProgress.isVisible = true
 
+        val language = selectedLanguage
+
         scope.launch {
             ModelDownloader.download(
                 context = this@MainActivity,
+                language = language,
                 onProgress = { pct ->
                     when (pct) {
                         -1 -> {
@@ -186,7 +239,7 @@ class MainActivity : AppCompatActivity() {
                         else -> {
                             progressBar.isIndeterminate = false
                             progressBar.progress = pct
-                            tvProgress.text = "Downloading…  $pct%"
+                            tvProgress.text = "Downloading ${language.displayName} model…  $pct%"
                         }
                     }
                 },
@@ -204,5 +257,10 @@ class MainActivity : AppCompatActivity() {
                 }
             )
         }
+    }
+
+    companion object {
+        private const val PREFS_NAME = "audio_transcriber_prefs"
+        private const val PREF_LANGUAGE = "selected_language"
     }
 }
