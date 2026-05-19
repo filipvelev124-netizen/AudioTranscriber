@@ -1,17 +1,15 @@
 package com.audiotranscriber
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.View
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ProgressBar
-import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -27,20 +25,19 @@ class MainActivity : AppCompatActivity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private lateinit var spinnerLanguage: Spinner
-    private lateinit var tvLanguageHint: TextView
+    private lateinit var btnLanguage: Button
     private lateinit var tvModelStatus: TextView
     private lateinit var tvPermissionsStatus: TextView
     private lateinit var tvServiceStatus: TextView
     private lateinit var tvNotifAccessStatus: TextView
+    private lateinit var tvRestrictedHint: TextView
     private lateinit var btnDownloadModel: Button
     private lateinit var btnPermissions: Button
     private lateinit var btnService: Button
     private lateinit var btnNotifAccess: Button
+    private lateinit var btnAppSettings: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var tvProgress: TextView
-
-    private var spinnerReady = false  // suppress the initial programmatic selection event
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -50,28 +47,36 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        spinnerLanguage       = findViewById(R.id.spinnerLanguage)
-        tvLanguageHint        = findViewById(R.id.tvLanguageHint)
-        tvModelStatus         = findViewById(R.id.tvModelStatus)
-        tvPermissionsStatus   = findViewById(R.id.tvPermissionsStatus)
-        tvServiceStatus       = findViewById(R.id.tvServiceStatus)
-        tvNotifAccessStatus   = findViewById(R.id.tvNotifAccessStatus)
-        btnDownloadModel      = findViewById(R.id.btnDownloadModel)
-        btnPermissions        = findViewById(R.id.btnPermissions)
-        btnService            = findViewById(R.id.btnService)
-        btnNotifAccess        = findViewById(R.id.btnNotifAccess)
-        progressBar           = findViewById(R.id.progressBar)
-        tvProgress            = findViewById(R.id.tvProgress)
+        btnLanguage         = findViewById(R.id.btnLanguage)
+        tvModelStatus       = findViewById(R.id.tvModelStatus)
+        tvPermissionsStatus = findViewById(R.id.tvPermissionsStatus)
+        tvServiceStatus     = findViewById(R.id.tvServiceStatus)
+        tvNotifAccessStatus = findViewById(R.id.tvNotifAccessStatus)
+        tvRestrictedHint    = findViewById(R.id.tvRestrictedHint)
+        btnDownloadModel    = findViewById(R.id.btnDownloadModel)
+        btnPermissions      = findViewById(R.id.btnPermissions)
+        btnService          = findViewById(R.id.btnService)
+        btnNotifAccess      = findViewById(R.id.btnNotifAccess)
+        btnAppSettings      = findViewById(R.id.btnAppSettings)
+        progressBar         = findViewById(R.id.progressBar)
+        tvProgress          = findViewById(R.id.tvProgress)
 
-        setupLanguageSpinner()
-
+        btnLanguage.setOnClickListener { showLanguagePicker() }
         btnDownloadModel.setOnClickListener { downloadModel() }
         btnPermissions.setOnClickListener { requestMissingPermissions() }
         btnService.setOnClickListener { toggleService() }
         btnNotifAccess.setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
+        btnAppSettings.setOnClickListener {
+            // Opens the app's own settings page where the user can tap ⋮ →
+            // "Allow restricted settings" to unlock notification access on Android 13+
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            })
+        }
 
+        updateLanguageButton()
         requestMissingPermissions()
     }
 
@@ -85,42 +90,35 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    // ── Language spinner ──────────────────────────────────────────────────────
+    // ── Language picker ───────────────────────────────────────────────────────
 
-    private fun setupLanguageSpinner() {
+    private fun updateLanguageButton() {
+        btnLanguage.text = Language.getSelected(this).displayName
+    }
+
+    private fun showLanguagePicker() {
         val languages = Language.values()
-        val adapter = ArrayAdapter(
-            this, android.R.layout.simple_spinner_item,
-            languages.map { it.displayName }
-        ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-        spinnerLanguage.adapter = adapter
+        val names = languages.map { lang ->
+            val downloaded = ModelDownloader.isDownloaded(this, lang)
+            if (downloaded) "✅ ${lang.displayName}" else lang.displayName
+        }.toTypedArray()
+        val currentIndex = languages.indexOf(Language.getSelected(this)).coerceAtLeast(0)
 
-        val selectedIndex = languages.indexOf(Language.getSelected(this)).coerceAtLeast(0)
-        spinnerLanguage.setSelection(selectedIndex, false)
-        spinnerReady = true
-
-        spinnerLanguage.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
-                if (!spinnerReady) return
-                val chosen = languages[pos]
-                val prev   = Language.getDownloaded(this@MainActivity)
-                Language.setSelected(this@MainActivity, chosen)
-
-                if (prev != null && prev != chosen) {
-                    // Different language selected — clear the old model so the status
-                    // shows "not downloaded" and the user knows they need to re-download
+        AlertDialog.Builder(this)
+            .setTitle("Select language")
+            .setSingleChoiceItems(names, currentIndex) { dialog, which ->
+                val chosen = languages[which]
+                val prev   = Language.getSelected(this)
+                Language.setSelected(this, chosen)
+                updateLanguageButton()
+                if (chosen != prev) {
+                    // Unload the in-memory model so the correct language is loaded next time
                     LocalTranscriber.reset()
-                    try { ModelDownloader.modelDir(this@MainActivity).deleteRecursively() }
-                    catch (_: Throwable) {}
-                    Language.clearDownloaded(this@MainActivity)
-                    tvLanguageHint.text = "Language changed — tap Download model to get the ${chosen.displayName} model."
-                } else {
-                    tvLanguageHint.text = ""
                 }
                 refreshStatus()
+                dialog.dismiss()
             }
-            override fun onNothingSelected(parent: AdapterView<*>) {}
-        }
+            .show()
     }
 
     // ── Service toggle ────────────────────────────────────────────────────────
@@ -129,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         if (AudioCaptureService.isRunning) {
             sendServiceIntent(AudioCaptureService.ACTION_STOP_SERVICE)
         } else {
-            // Start the service in idle state (no action = onCreate → idle notification)
+            // Start in idle state (no action = onCreate → idle notification, no recording)
             val intent = Intent(this, AudioCaptureService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
             else startService(intent)
@@ -157,13 +155,13 @@ class MainActivity : AppCompatActivity() {
     // ── Status ────────────────────────────────────────────────────────────────
 
     private fun refreshStatus() {
+        val lang = Language.getSelected(this)
+
         // Step 1: model
-        if (ModelDownloader.isDownloaded(this)) {
-            val lang = Language.getSelected(this)
+        if (ModelDownloader.isDownloaded(this, lang)) {
             tvModelStatus.text = "Speech model: ✅ Downloaded (${lang.displayName})"
             btnDownloadModel.text = "Re-download model"
         } else {
-            val lang = Language.getSelected(this)
             tvModelStatus.text = "Speech model: ❌ Not downloaded"
             btnDownloadModel.text = "Download ${lang.displayName} model (~45 MB)"
         }
@@ -205,19 +203,22 @@ class MainActivity : AppCompatActivity() {
         if (isNotificationAccessGranted()) {
             tvNotifAccessStatus.text = "Notification access: ✅ Granted — auto-detection active"
             btnNotifAccess.text = "Manage notification access"
+            tvRestrictedHint.isVisible = false
+            btnAppSettings.isVisible = false
         } else {
             tvNotifAccessStatus.text = "Notification access: ❌ Not granted"
             btnNotifAccess.text = "Enable notification access"
+            // Show restricted-settings hint for Android 13+ sideloaded builds
+            val showHint = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            tvRestrictedHint.isVisible = showHint
+            btnAppSettings.isVisible = showHint
         }
 
-        // Pre-load model into memory if it's ready
-        if (ModelDownloader.isDownloaded(this) && !LocalTranscriber.isReady) {
+        // Pre-load model into memory if downloaded for the current language
+        if (ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady) {
             LocalTranscriber.initialize(
                 context = this,
-                onReady = {
-                    val lang = Language.getSelected(this)
-                    tvModelStatus.text = "Speech model: ✅ Loaded (${lang.displayName})"
-                },
+                onReady = { tvModelStatus.text = "Speech model: ✅ Loaded (${lang.displayName})" },
                 onError = { e -> tvModelStatus.text = "Speech model: ⚠️ $e" }
             )
         }
@@ -247,7 +248,6 @@ class MainActivity : AppCompatActivity() {
         btnDownloadModel.isEnabled = false
         progressBar.isVisible = true
         tvProgress.isVisible = true
-        tvLanguageHint.text = ""
 
         val language = Language.getSelected(this)
 

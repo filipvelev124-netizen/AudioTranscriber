@@ -11,7 +11,6 @@ object LocalTranscriber {
     @Volatile private var model: Model? = null
     @Volatile var isReady = false
         private set
-    // Prevents a second background thread while the first is still loading.
     @Volatile private var isLoading = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -20,17 +19,16 @@ object LocalTranscriber {
         if (isReady) { mainHandler.post { onReady() }; return }
         if (isLoading) return
 
-        val modelPath = ModelDownloader.modelDir(context)
+        val language  = Language.getSelected(context)
+        val modelPath = ModelDownloader.modelDir(context, language)
+
         if (!modelPath.exists()) {
             mainHandler.post { onError("Model not found — download it first") }
             return
         }
 
-        // Validate required subdirectories before calling Model() — an incomplete
-        // extraction causes a native C++ crash that cannot be caught by Java try-catch.
-        if (!ModelDownloader.isModelValid(context)) {
+        if (!ModelDownloader.isModelValid(context, language)) {
             try { modelPath.deleteRecursively() } catch (_: Throwable) {}
-            Language.clearDownloaded(context)
             mainHandler.post { onError("Model files are incomplete — please re-download in the app") }
             return
         }

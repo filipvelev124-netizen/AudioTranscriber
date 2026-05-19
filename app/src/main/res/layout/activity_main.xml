@@ -38,19 +38,11 @@
             android:textColor="@color/textPrimary"
             android:layout_marginBottom="6dp" />
 
-        <Spinner
-            android:id="@+id/spinnerLanguage"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:id="@+id/tvLanguageHint"
+        <Button
+            android:id="@+id/btnLanguage"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="12sp"
-            android:textColor="@color/textSecondary"
+            android:text="English"
             android:layout_marginBottom="24dp" />
 
         <!-- ── Step 1: Model ── -->
@@ -178,7 +170,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Watches chat app notifications. When a voice message arrives, a banner appears automatically so you can transcribe it right away."
+            android:text="Watches chat app notifications. When a voice message arrives, a banner appears so you can transcribe it right away."
             android:textSize="13sp"
             android:textColor="@color/textSecondary"
             android:layout_marginBottom="6dp" />
@@ -190,7 +182,26 @@
             android:text="Notification access: checking…"
             android:textSize="14sp"
             android:textColor="@color/textSecondary"
+            android:layout_marginBottom="4dp" />
+
+        <!-- Shown only when access is blocked by Restricted Settings (Android 13+ sideloaded) -->
+        <TextView
+            android:id="@+id/tvRestrictedHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚠️ Blocked by Restricted Settings? Tap Open App Settings → ⋮ menu → Allow restricted settings. Then come back here."
+            android:textSize="13sp"
+            android:textColor="@color/textSecondary"
+            android:visibility="gone"
             android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnAppSettings"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Open App Settings"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/btnNotifAccess"

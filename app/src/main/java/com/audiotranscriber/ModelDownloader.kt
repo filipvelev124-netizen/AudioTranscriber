@@ -11,20 +11,19 @@ import java.util.zip.ZipInputStream
 
 object ModelDownloader {
 
-    const val MODEL_DIR_NAME = "vosk-model"
+    // Each language gets its own subdirectory so switching languages never
+    // requires re-downloading a model that was already saved.
+    fun modelDir(context: Context, language: Language = Language.getSelected(context)) =
+        File(context.filesDir, "vosk-model-${language.name.lowercase()}")
 
-    fun modelDir(context: Context) = File(context.filesDir, MODEL_DIR_NAME)
+    fun isDownloaded(context: Context, language: Language = Language.getSelected(context)) =
+        modelDir(context, language).isDirectory
 
-    fun isDownloaded(context: Context): Boolean {
-        if (!modelDir(context).exists()) return false
-        return Language.getDownloaded(context) == Language.getSelected(context)
-    }
-
-    // A valid Vosk model must have these subdirectories. A directory that exists
-    // but lacks them means the extraction was interrupted — passing such a path to
-    // Model() causes a native crash that cannot be caught by Java try-catch.
-    fun isModelValid(context: Context): Boolean {
-        val dir = modelDir(context)
+    // A valid Vosk model must have these subdirectories. An incomplete extraction
+    // (process killed mid-unzip) leaves the dir present but missing files —
+    // passing such a path to Model() causes a native crash that can't be caught.
+    fun isModelValid(context: Context, language: Language = Language.getSelected(context)): Boolean {
+        val dir = modelDir(context, language)
         return dir.isDirectory &&
                File(dir, "am").isDirectory &&
                File(dir, "conf").isDirectory
@@ -37,10 +36,12 @@ object ModelDownloader {
         onComplete: () -> Unit,
         onError: (String) -> Unit
     ) = withContext(Dispatchers.IO) {
+        val destDir = modelDir(context, language)
+        val tempDir = File(context.filesDir, "vosk-model-downloading")
         try {
-            // Always delete any existing model before downloading a new language
-            try { modelDir(context).deleteRecursively() } catch (_: Throwable) {}
-            Language.clearDownloaded(context)
+            // Only wipe THIS language's directory; other languages are kept intact
+            destDir.deleteRecursively()
+            tempDir.deleteRecursively()
 
             val client = OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
@@ -90,25 +91,27 @@ object ModelDownloader {
 
             withContext(Dispatchers.Main) { onProgress(-1) }
 
-            unzip(zipFile, context.filesDir)
+            // Unzip renames the extracted folder to tempDir;
+            // then rename tempDir → language-specific destDir
+            unzip(zipFile, context.filesDir, tempDir.name)
             zipFile.delete()
+            tempDir.renameTo(destDir)
 
-            Language.setDownloaded(context, language)
             withContext(Dispatchers.Main) { onComplete() }
 
         } catch (e: Throwable) {
             try { File(context.cacheDir, "vosk_model.zip").delete() } catch (_: Throwable) {}
-            try { modelDir(context).deleteRecursively() } catch (_: Throwable) {}
-            Language.clearDownloaded(context)
+            try { destDir.deleteRecursively() } catch (_: Throwable) {}
+            try { tempDir.deleteRecursively() } catch (_: Throwable) {}
             withContext(Dispatchers.Main) { onError(e.message ?: "Unknown error") }
         }
     }
 
-    private fun unzip(zipFile: File, targetDir: File) {
+    private fun unzip(zipFile: File, targetDir: File, destName: String) {
         val canonicalTarget = targetDir.canonicalPath
-        val maxEntryBytes = 300L * 1024 * 1024
-        var totalExtracted = 0L
-        val totalLimit     = 600L * 1024 * 1024
+        val maxEntryBytes   = 300L * 1024 * 1024
+        var totalExtracted  = 0L
+        val totalLimit      = 600L * 1024 * 1024
 
         ZipInputStream(zipFile.inputStream().buffered()).use { zis ->
             var entry = zis.nextEntry
@@ -119,9 +122,7 @@ object ModelDownloader {
                 // Zip Slip protection
                 if (!canonical.startsWith(canonicalTarget + File.separator) &&
                     canonical != canonicalTarget) {
-                    zis.closeEntry()
-                    entry = zis.nextEntry
-                    continue
+                    zis.closeEntry(); entry = zis.nextEntry; continue
                 }
 
                 if (entry.isDirectory) {
@@ -133,7 +134,7 @@ object ModelDownloader {
                         var entryBytes = 0L
                         var read: Int
                         while (zis.read(buf).also { read = it } != -1) {
-                            entryBytes    += read
+                            entryBytes     += read
                             totalExtracted += read
                             if (entryBytes > maxEntryBytes || totalExtracted > totalLimit)
                                 throw SecurityException("ZIP content exceeds size limit")
@@ -146,10 +147,11 @@ object ModelDownloader {
             }
         }
 
-        // Rename versioned folder (e.g. vosk-model-small-en-us-0.15) to stable name
+        // The zip unpacks a versioned folder (e.g. vosk-model-small-en-us-0.15).
+        // Rename it to destName so callers get a stable directory name.
         val extracted = targetDir.listFiles { f ->
             f.isDirectory && f.name.startsWith("vosk-model")
         }?.firstOrNull()
-        extracted?.renameTo(File(targetDir, MODEL_DIR_NAME))
+        extracted?.renameTo(File(targetDir, destName))
     }
 }
