@@ -19,7 +19,8 @@ enum class Language(
     HINDI(      "Hindi (हिन्दी)",        listOf("https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip")),
     DUTCH(      "Dutch (Nederlands)",   listOf("https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip")),
     TURKISH(    "Turkish (Türkçe)",     listOf("https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip")),
-    KOREAN(     "Korean (한국어)",        listOf("https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip"));
+    KOREAN(     "Korean (한국어)",        listOf("https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip")),
+    BULGARIAN(  "Bulgarian (Български)", listOf("https://alphacephei.com/vosk/models/vosk-model-bg-0.22.zip"));
 
     companion object {
         private const val PREFS      = "transcriber_prefs"
