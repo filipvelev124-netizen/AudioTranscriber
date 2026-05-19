@@ -12,9 +12,6 @@ object LocalTranscriber {
     @Volatile var isReady = false
         private set
     // Prevents a second background thread while the first is still loading.
-    // Both MainActivity and the accessibility service call initialize() on startup
-    // before isReady is true — without this guard they'd each start a thread,
-    // load two Model objects simultaneously, and risk OOM on low-RAM devices.
     @Volatile private var isLoading = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -30,12 +27,10 @@ object LocalTranscriber {
         }
 
         // Validate required subdirectories before calling Model() — an incomplete
-        // extraction (e.g. process killed mid-unzip) leaves the directory present but
-        // missing files. Passing such a path to Vosk causes a native C++ crash that
-        // cannot be caught by any Java try-catch. Delete the corrupt dir so the
-        // UI shows "not downloaded" and the user can re-download cleanly.
+        // extraction causes a native C++ crash that cannot be caught by Java try-catch.
         if (!ModelDownloader.isModelValid(context)) {
             try { modelPath.deleteRecursively() } catch (_: Throwable) {}
+            Language.clearDownloaded(context)
             mainHandler.post { onError("Model files are incomplete — please re-download in the app") }
             return
         }
@@ -46,17 +41,19 @@ object LocalTranscriber {
                 model = Model(modelPath.absolutePath)
                 isReady = true
                 isLoading = false
-                // Must dispatch to main thread. Callers (e.g. MainActivity) pass
-                // UI-updating lambdas. Calling them from a background thread throws
-                // CalledFromWrongThreadException; that exception escapes the catch block
-                // and the JVM default uncaught handler kills the entire process.
                 mainHandler.post { onReady() }
             } catch (e: Throwable) {
-                // Throwable catches UnsatisfiedLinkError / OutOfMemoryError from Vosk JNI
                 isLoading = false
                 mainHandler.post { onError("Failed to load model: ${e.message}") }
             }
         }.apply { name = "vosk-model-loader" }.start()
+    }
+
+    fun reset() {
+        isReady = false
+        isLoading = false
+        try { model?.close() } catch (_: Throwable) {}
+        model = null
     }
 
     fun createRecognizer(sampleRate: Float): Recognizer? {
@@ -64,7 +61,6 @@ object LocalTranscriber {
         return try { Recognizer(model, sampleRate) } catch (e: Throwable) { null }
     }
 
-    // Vosk returns JSON: {"text": "hello world"}
     fun parseResult(json: String): String {
         return try {
             val text = json.substringAfter("\"text\" : \"").substringBefore("\"").trim()
@@ -72,7 +68,6 @@ object LocalTranscriber {
         } catch (e: Throwable) { "❌ Could not parse result" }
     }
 
-    // Vosk partial JSON: {"partial": "hel"}
     fun parsePartial(json: String): String {
         return try {
             json.substringAfter("\"partial\" : \"").substringBefore("\"").trim()

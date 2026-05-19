@@ -11,21 +11,18 @@ import java.util.zip.ZipInputStream
 
 object ModelDownloader {
 
-    // Ordered list of mirrors/versions to try — first success wins
-    // 0.15 confirmed working; 0.22 returns 404 on alphacephei servers
-    private val MODEL_URLS = listOf(
-        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip"
-    )
     const val MODEL_DIR_NAME = "vosk-model"
 
     fun modelDir(context: Context) = File(context.filesDir, MODEL_DIR_NAME)
 
-    fun isDownloaded(context: Context) = modelDir(context).exists()
+    fun isDownloaded(context: Context): Boolean {
+        if (!modelDir(context).exists()) return false
+        return Language.getDownloaded(context) == Language.getSelected(context)
+    }
 
     // A valid Vosk model must have these subdirectories. A directory that exists
-    // but lacks them means the extraction was interrupted or partially completed —
-    // passing such a path to Model() causes a native crash that cannot be caught.
+    // but lacks them means the extraction was interrupted — passing such a path to
+    // Model() causes a native crash that cannot be caught by Java try-catch.
     fun isModelValid(context: Context): Boolean {
         val dir = modelDir(context)
         return dir.isDirectory &&
@@ -35,20 +32,24 @@ object ModelDownloader {
 
     suspend fun download(
         context: Context,
+        language: Language = Language.getSelected(context),
         onProgress: (Int) -> Unit,   // 0–100 while downloading, -1 while extracting
         onComplete: () -> Unit,
         onError: (String) -> Unit
     ) = withContext(Dispatchers.IO) {
         try {
+            // Always delete any existing model before downloading a new language
+            try { modelDir(context).deleteRecursively() } catch (_: Throwable) {}
+            Language.clearDownloaded(context)
+
             val client = OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.MINUTES)
                 .build()
 
-            // Try each mirror in order until one succeeds
-            var response = client.newCall(Request.Builder().url(MODEL_URLS[0]).build()).execute()
-            if (!response.isSuccessful) {
-                for (url in MODEL_URLS.drop(1)) {
+            var response = client.newCall(Request.Builder().url(language.urls[0]).build()).execute()
+            if (!response.isSuccessful && language.urls.size > 1) {
+                for (url in language.urls.drop(1)) {
                     response.close()
                     response = client.newCall(Request.Builder().url(url).build()).execute()
                     if (response.isSuccessful) break
@@ -57,7 +58,9 @@ object ModelDownloader {
 
             if (!response.isSuccessful) {
                 response.close()
-                withContext(Dispatchers.Main) { onError("All download sources failed (HTTP ${response.code}). Check your internet connection.") }
+                withContext(Dispatchers.Main) {
+                    onError("Download failed (HTTP ${response.code}). Check your internet connection.")
+                }
                 return@withContext
             }
 
@@ -69,7 +72,6 @@ object ModelDownloader {
             val contentLength = body.contentLength()
             val zipFile = File(context.cacheDir, "vosk_model.zip")
 
-            // Stream to disk while reporting progress
             body.byteStream().use { input ->
                 zipFile.outputStream().use { output ->
                     val buffer = ByteArray(8_192)
@@ -86,28 +88,27 @@ object ModelDownloader {
                 }
             }
 
-            // Signal "extracting" phase
             withContext(Dispatchers.Main) { onProgress(-1) }
 
             unzip(zipFile, context.filesDir)
             zipFile.delete()
 
+            Language.setDownloaded(context, language)
             withContext(Dispatchers.Main) { onComplete() }
 
         } catch (e: Throwable) {
-            // Clean up any partial download or half-extracted files so the next
-            // attempt doesn't find a corrupt state
             try { File(context.cacheDir, "vosk_model.zip").delete() } catch (_: Throwable) {}
             try { modelDir(context).deleteRecursively() } catch (_: Throwable) {}
+            Language.clearDownloaded(context)
             withContext(Dispatchers.Main) { onError(e.message ?: "Unknown error") }
         }
     }
 
     private fun unzip(zipFile: File, targetDir: File) {
         val canonicalTarget = targetDir.canonicalPath
-        val maxEntryBytes = 300L * 1024 * 1024   // 300 MB per file — model is ~60 MB
+        val maxEntryBytes = 300L * 1024 * 1024
         var totalExtracted = 0L
-        val totalLimit     = 600L * 1024 * 1024   // 600 MB total across all entries
+        val totalLimit     = 600L * 1024 * 1024
 
         ZipInputStream(zipFile.inputStream().buffered()).use { zis ->
             var entry = zis.nextEntry
@@ -115,7 +116,7 @@ object ModelDownloader {
                 val outFile   = File(targetDir, entry.name)
                 val canonical = outFile.canonicalPath
 
-                // Zip Slip protection: resolved path must stay inside targetDir
+                // Zip Slip protection
                 if (!canonical.startsWith(canonicalTarget + File.separator) &&
                     canonical != canonicalTarget) {
                     zis.closeEntry()
@@ -145,8 +146,7 @@ object ModelDownloader {
             }
         }
 
-        // The zip unpacks a versioned folder (e.g. vosk-model-small-en-us-0.15).
-        // Rename it to the stable MODEL_DIR_NAME so the path never changes.
+        // Rename versioned folder (e.g. vosk-model-small-en-us-0.15) to stable name
         val extracted = targetDir.listFiles { f ->
             f.isDirectory && f.name.startsWith("vosk-model")
         }?.firstOrNull()

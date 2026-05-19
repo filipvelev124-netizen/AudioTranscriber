@@ -26,7 +26,32 @@
             android:text="Transcribe voice messages in any app — 100% on-device, free, private."
             android:textSize="14sp"
             android:textColor="@color/textSecondary"
-            android:layout_marginBottom="32dp" />
+            android:layout_marginBottom="24dp" />
+
+        <!-- ── Language selector ── -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Language"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/textPrimary"
+            android:layout_marginBottom="6dp" />
+
+        <Spinner
+            android:id="@+id/spinnerLanguage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvLanguageHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="12sp"
+            android:textColor="@color/textSecondary"
+            android:layout_marginBottom="24dp" />
 
         <!-- ── Step 1: Model ── -->
         <TextView
@@ -85,7 +110,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Microphone: to capture audio for transcription.\nNotifications (Android 13+): to show the transcription result."
+            android:text="Microphone: to capture audio.\nNotifications (Android 13+): to show the transcript."
             android:textSize="13sp"
             android:textColor="@color/textSecondary"
             android:layout_marginBottom="6dp" />
@@ -138,6 +163,40 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Start service"
+            android:layout_marginBottom="28dp" />
+
+        <!-- ── Step 4: Notification access (optional) ── -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Step 4 — Auto-detect voice messages (optional)"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/textPrimary"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Watches chat app notifications. When a voice message arrives, a banner appears automatically so you can transcribe it right away."
+            android:textSize="13sp"
+            android:textColor="@color/textSecondary"
+            android:layout_marginBottom="6dp" />
+
+        <TextView
+            android:id="@+id/tvNotifAccessStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Notification access: checking…"
+            android:textSize="14sp"
+            android:textColor="@color/textSecondary"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnNotifAccess"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enable notification access"
             android:layout_marginBottom="32dp" />
 
         <!-- ── How to use ── -->
@@ -153,7 +212,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="1. Complete all three steps above.\n2. Open any chat app (WhatsApp, Telegram, Instagram…).\n3. When you see a voice message, pull down the notification shade.\n4. Tap 🎙 Transcribe in the Audio Transcriber notification.\n5. Immediately tap Play on the voice message.\n6. The transcript appears in the notification when done.\n7. Tap 📋 Copy to copy the text.\n\nUses your microphone — works best with speaker on.\nAll speech processing happens on your device — nothing leaves your phone."
+            android:text="With auto-detect (Step 4 enabled):\n1. Receive a voice message in WhatsApp, Telegram, etc.\n2. A banner appears — tap 🎙 Transcribe.\n3. Immediately play the voice message.\n4. The transcript appears in the notification — tap 📋 Copy.\n\nManually (without Step 4):\n1. Pull down the notification shade.\n2. Tap 🎙 Transcribe in the Audio Transcriber notification.\n3. Immediately play the voice message.\n4. Tap 📋 Copy when done.\n\nAll speech processing happens on your device — nothing leaves your phone."
             android:textSize="14sp"
             android:textColor="@color/textSecondary"
             android:lineSpacingMultiplier="1.5" />
