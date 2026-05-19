@@ -158,11 +158,17 @@ class MainActivity : AppCompatActivity() {
         val lang = Language.getSelected(this)
 
         // Step 1: model
-        if (ModelDownloader.isDownloaded(this, lang)) {
+        if (lang.isOnline) {
+            tvModelStatus.text = "Speech model: 🌐 Online — uses internet (${lang.displayName})"
+            btnDownloadModel.isEnabled = false
+            btnDownloadModel.text = "No download needed"
+        } else if (ModelDownloader.isDownloaded(this, lang)) {
             tvModelStatus.text = "Speech model: ✅ Downloaded (${lang.displayName})"
+            btnDownloadModel.isEnabled = true
             btnDownloadModel.text = "Re-download model"
         } else {
             tvModelStatus.text = "Speech model: ❌ Not downloaded"
+            btnDownloadModel.isEnabled = true
             btnDownloadModel.text = "Download ${lang.displayName} model (~45 MB)"
         }
 
@@ -215,7 +221,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Pre-load model into memory if downloaded for the current language
-        if (ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady) {
+        if (!lang.isOnline && ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady) {
             LocalTranscriber.initialize(
                 context = this,
                 onReady = { tvModelStatus.text = "Speech model: ✅ Loaded (${lang.displayName})" },

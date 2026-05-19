@@ -16,13 +16,16 @@ object ModelDownloader {
     fun modelDir(context: Context, language: Language = Language.getSelected(context)) =
         File(context.filesDir, "vosk-model-${language.name.lowercase()}")
 
-    fun isDownloaded(context: Context, language: Language = Language.getSelected(context)) =
-        modelDir(context, language).isDirectory
+    fun isDownloaded(context: Context, language: Language = Language.getSelected(context)): Boolean {
+        if (language.isOnline) return true  // online languages need no local model
+        return modelDir(context, language).isDirectory
+    }
 
     // A valid Vosk model must have these subdirectories. An incomplete extraction
     // (process killed mid-unzip) leaves the dir present but missing files —
     // passing such a path to Model() causes a native crash that can't be caught.
     fun isModelValid(context: Context, language: Language = Language.getSelected(context)): Boolean {
+        if (language.isOnline) return true
         val dir = modelDir(context, language)
         return dir.isDirectory &&
                File(dir, "am").isDirectory &&
