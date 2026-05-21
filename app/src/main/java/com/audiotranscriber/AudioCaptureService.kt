@@ -53,7 +53,8 @@ class AudioCaptureService : Service() {
 
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
-    private var onlineTranscriber: OnlineTranscriber? = null
+    // Lambda that stops whichever online transcriber is active (BulgarianTranscriber etc.)
+    private var stopOnlineCapture: (() -> Unit)? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Stores the last transcription result so the copy action can read it
@@ -126,8 +127,8 @@ class AudioCaptureService : Service() {
     private fun startCapture() {
         captureJob?.cancel()
         releaseAudioRecord()
-        try { onlineTranscriber?.cancel() } catch (_: Throwable) {}
-        onlineTranscriber = null
+        try { stopOnlineCapture?.invoke() } catch (_: Throwable) {}
+        stopOnlineCapture = null
 
         // Online languages (e.g. Bulgarian) use Android's SpeechRecognizer instead of Vosk
         val language = Language.getSelected(this)
@@ -253,17 +254,16 @@ class AudioCaptureService : Service() {
 
     private fun startOnlineCapture(language: Language) {
         isRecording = true
-        notify(buildRecordingNotification("🌐 Listening (${language.displayName})… play the message now"))
+        notify(buildRecordingNotification("🎙 Recording (${language.displayName})… play the message now"))
 
-        onlineTranscriber = OnlineTranscriber(
+        val transcriber = BulgarianTranscriber(
             context   = this,
-            locale    = language.onlineLocale!!,
             onPartial = { partial ->
-                try { notify(buildRecordingNotification("🎙 $partial…")) } catch (_: Throwable) {}
+                try { notify(buildRecordingNotification(partial)) } catch (_: Throwable) {}
             },
             onResult  = { text ->
                 isRecording = false
-                onlineTranscriber = null
+                stopOnlineCapture = null
                 if (text.isEmpty()) {
                     try { notify(buildIdleNotification("🔇 No speech detected — tap to try again")) } catch (_: Throwable) {}
                 } else {
@@ -273,11 +273,12 @@ class AudioCaptureService : Service() {
             },
             onError   = { msg ->
                 isRecording = false
-                onlineTranscriber = null
+                stopOnlineCapture = null
                 try { notify(buildIdleNotification(msg)) } catch (_: Throwable) {}
             }
         )
-        onlineTranscriber?.start()
+        stopOnlineCapture = { transcriber.stop() }
+        transcriber.start()
     }
 
     fun stopCapture() {
@@ -285,9 +286,8 @@ class AudioCaptureService : Service() {
         captureJob = null
         isRecording = false
         releaseAudioRecord()
-        // stopListening() delivers partial results; cancel() discards them
-        try { onlineTranscriber?.stop() } catch (_: Throwable) {}
-        onlineTranscriber = null
+        try { stopOnlineCapture?.invoke() } catch (_: Throwable) {}
+        stopOnlineCapture = null
         try { notify(buildIdleNotification()) } catch (_: Throwable) {}
     }
 
@@ -314,8 +314,8 @@ class AudioCaptureService : Service() {
         try { captureJob?.cancel() } catch (_: Throwable) {}
         try { scope.cancel() } catch (_: Throwable) {}
         try { releaseAudioRecord() } catch (_: Throwable) {}
-        try { onlineTranscriber?.cancel() } catch (_: Throwable) {}
-        onlineTranscriber = null
+        try { stopOnlineCapture?.invoke() } catch (_: Throwable) {}
+        stopOnlineCapture = null
         if (copyReceiverRegistered) try { unregisterReceiver(copyReceiver) } catch (_: Throwable) {}
         super.onDestroy()
     }

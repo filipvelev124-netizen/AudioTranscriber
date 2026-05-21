@@ -4,7 +4,17 @@
       "Bash(gh --version)",
       "Bash(gh auth *)",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git config *)",
+      "Bash(git commit -m ' *)",
+      "Bash(gh run *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(curl -sI \"https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip\")",
+      "Bash(curl -sI --max-time 10 \"https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip\")",
+      "Bash(curl -sI --max-time 10 \"https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip\")",
+      "Bash(del \"C:\\\\Users\\\\User\\\\Desktop\\\\Viki\\\\app\\\\src\\\\main\\\\res\\\\xml\\\\accessibility_service_config.xml\")",
+      "Bash(git rm *)"
     ]
   }
 }

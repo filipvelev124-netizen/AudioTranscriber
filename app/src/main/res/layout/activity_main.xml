@@ -43,7 +43,66 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="English"
-            android:layout_marginBottom="24dp" />
+            android:layout_marginBottom="12dp" />
+
+        <!-- Shown only when an online language (Bulgarian) is selected -->
+        <LinearLayout
+            android:id="@+id/layoutHfToken"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔑 Hugging Face API token (free)"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="@color/textPrimary"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="huggingface.co → sign up free → Settings → Access Tokens → New token (Read)"
+                android:textSize="12sp"
+                android:textColor="@color/textSecondary"
+                android:layout_marginBottom="8dp" />
+
+            <EditText
+                android:id="@+id/etHfToken"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="hf_xxxxxxxxxxxxxxxx"
+                android:inputType="textNoSuggestions|textVisiblePassword"
+                android:singleLine="true"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btnSaveToken"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Save token"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tvTokenStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textSize="12sp"
+                android:textColor="@color/textSecondary" />
+
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/textSecondary"
+            android:alpha="0.2"
+            android:layout_marginBottom="20dp" />
 
         <!-- ── Step 1: Model ── -->
         <TextView

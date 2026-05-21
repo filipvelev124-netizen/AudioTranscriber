@@ -8,7 +8,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +29,10 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private lateinit var btnLanguage: Button
+    private lateinit var layoutHfToken: LinearLayout
+    private lateinit var etHfToken: EditText
+    private lateinit var btnSaveToken: Button
+    private lateinit var tvTokenStatus: TextView
     private lateinit var tvModelStatus: TextView
     private lateinit var tvPermissionsStatus: TextView
     private lateinit var tvServiceStatus: TextView
@@ -48,6 +55,10 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         btnLanguage         = findViewById(R.id.btnLanguage)
+        layoutHfToken       = findViewById(R.id.layoutHfToken)
+        etHfToken           = findViewById(R.id.etHfToken)
+        btnSaveToken        = findViewById(R.id.btnSaveToken)
+        tvTokenStatus       = findViewById(R.id.tvTokenStatus)
         tvModelStatus       = findViewById(R.id.tvModelStatus)
         tvPermissionsStatus = findViewById(R.id.tvPermissionsStatus)
         tvServiceStatus     = findViewById(R.id.tvServiceStatus)
@@ -62,6 +73,14 @@ class MainActivity : AppCompatActivity() {
         tvProgress          = findViewById(R.id.tvProgress)
 
         btnLanguage.setOnClickListener { showLanguagePicker() }
+        btnSaveToken.setOnClickListener {
+            val token = etHfToken.text.toString().trim()
+            AppPrefs.setHfToken(this, token)
+            tvTokenStatus.text = if (token.isNotEmpty()) "✅ Token saved" else "⚠️ Token cleared"
+            // hide keyboard
+            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+                .hideSoftInputFromWindow(etHfToken.windowToken, 0)
+        }
         btnDownloadModel.setOnClickListener { downloadModel() }
         btnPermissions.setOnClickListener { requestMissingPermissions() }
         btnService.setOnClickListener { toggleService() }
@@ -77,6 +96,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateLanguageButton()
+        updateTokenPanel()
         requestMissingPermissions()
     }
 
@@ -96,6 +116,20 @@ class MainActivity : AppCompatActivity() {
         btnLanguage.text = Language.getSelected(this).displayName
     }
 
+    private fun updateTokenPanel() {
+        val lang = Language.getSelected(this)
+        layoutHfToken.isVisible = lang.isOnline
+        if (lang.isOnline) {
+            val saved = AppPrefs.getHfToken(this)
+            if (saved.isNotEmpty()) {
+                etHfToken.setText(saved)
+                tvTokenStatus.text = "✅ Token saved"
+            } else {
+                tvTokenStatus.text = ""
+            }
+        }
+    }
+
     private fun showLanguagePicker() {
         val languages = Language.values()
         val names = languages.map { lang ->
@@ -111,6 +145,7 @@ class MainActivity : AppCompatActivity() {
                 val prev   = Language.getSelected(this)
                 Language.setSelected(this, chosen)
                 updateLanguageButton()
+                updateTokenPanel()
                 if (chosen != prev) {
                     // Unload the in-memory model so the correct language is loaded next time
                     LocalTranscriber.reset()
