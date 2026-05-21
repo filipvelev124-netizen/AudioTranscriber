@@ -23,14 +23,19 @@ class VoiceMessageListenerService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         try {
             if (sbn.packageName == packageName) return
-            if (sbn.packageName !in MESSAGING_PACKAGES) return
+
+            // Check if this app is in the enabled set
+            val disabled = AppPrefs.getDisabledPackages(this)
+            val allPackages = MESSAGING_APPS.map { it.packageName }.toSet()
+            if (sbn.packageName !in allPackages) return
+            if (sbn.packageName in disabled) return
 
             val now = System.currentTimeMillis()
             if (now - lastPromptMs < DEBOUNCE_MS) return
 
             val extras = sbn.notification?.extras ?: return
-            val title = extras.getString(Notification.EXTRA_TITLE) ?: ""
-            val text  = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
+            val title  = extras.getString(Notification.EXTRA_TITLE) ?: ""
+            val text   = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
 
             if (audioKeywords.any { ("$title $text").lowercase().contains(it) }) {
                 lastPromptMs = now
@@ -87,23 +92,9 @@ class VoiceMessageListenerService : NotificationListenerService() {
     }
 
     companion object {
-        private const val CHANNEL_ID    = "voice_alert_channel"
-        const val PROMPT_NOTIF_ID       = 43
-        private const val DEBOUNCE_MS   = 10_000L
-
-        private val MESSAGING_PACKAGES = setOf(
-            "com.whatsapp", "com.whatsapp.w4b",
-            "org.telegram.messenger", "org.telegram.plus",
-            "com.instagram.android",
-            "com.facebook.orca",
-            "com.viber.voip",
-            "com.discord",
-            "com.snapchat.android",
-            "org.thoughtcrime.securesms",
-            "im.vector.app",
-            "com.skype.raider",
-            "com.microsoft.teams",
-        )
+        private const val CHANNEL_ID  = "voice_alert_channel"
+        const val PROMPT_NOTIF_ID     = 43
+        private const val DEBOUNCE_MS = 10_000L
 
         private val audioKeywords = listOf(
             "voice message", "audio message", "voice note", "audio note",

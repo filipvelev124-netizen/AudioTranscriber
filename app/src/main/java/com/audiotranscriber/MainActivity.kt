@@ -23,11 +23,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    private lateinit var btnSettings: Button
+    private lateinit var btnHistory: Button
     private lateinit var btnLanguage: Button
     private lateinit var layoutHfToken: LinearLayout
     private lateinit var etHfToken: EditText
@@ -54,6 +57,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        btnSettings         = findViewById(R.id.btnSettings)
+        btnHistory          = findViewById(R.id.btnHistory)
         btnLanguage         = findViewById(R.id.btnLanguage)
         layoutHfToken       = findViewById(R.id.layoutHfToken)
         etHfToken           = findViewById(R.id.etHfToken)
@@ -72,6 +77,8 @@ class MainActivity : AppCompatActivity() {
         progressBar         = findViewById(R.id.progressBar)
         tvProgress          = findViewById(R.id.tvProgress)
 
+        btnSettings.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        btnHistory.setOnClickListener  { startActivity(Intent(this, HistoryActivity::class.java)) }
         btnLanguage.setOnClickListener { showLanguagePicker() }
         btnSaveToken.setOnClickListener {
             val token = etHfToken.text.toString().trim()

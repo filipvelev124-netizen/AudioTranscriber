@@ -14,7 +14,24 @@
       "Bash(curl -sI --max-time 10 \"https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip\")",
       "Bash(curl -sI --max-time 10 \"https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip\")",
       "Bash(del \"C:\\\\Users\\\\User\\\\Desktop\\\\Viki\\\\app\\\\src\\\\main\\\\res\\\\xml\\\\accessibility_service_config.xml\")",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\User\\\\Desktop\\\\Viki\\\\app\\\\src\\\\main\\\\java\\\\com\\\\audiotranscriber\\\\BulgarianTranscriber.kt\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"Deleted\")",
+      "Bash(./gradlew assembleDebug --no-daemon)",
+      "PowerShell(Test-Path \"$env:USERPROFILE\\\\.gradle\\\\wrapper\\\\dists\\\\gradle-8.7-bin\" | Write-Host; Get-ChildItem \"$env:USERPROFILE\\\\.gradle\\\\wrapper\\\\dists\\\\\" -ErrorAction SilentlyContinue | Select-Object Name)",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\.gradle\\\\wrapper\\\\dists\\\\gradle-8.7-bin\\\\\" | Select-Object Name, LastWriteTime)",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\.gradle\\\\wrapper\\\\dists\\\\\" -Recurse -Depth 3 | Select-Object FullName | Format-List)",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\Java\", \"C:\\\\Program Files\\\\Eclipse Adoptium\", \"C:\\\\Program Files\\\\Microsoft\" -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer } | Select-Object FullName)",
+      "PowerShell(Get-Command java)",
+      "PowerShell(java -version 2>&1)",
+      "PowerShell($env:JAVA_HOME)",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\" -ErrorAction SilentlyContinue | Select-Object FullName -First 5; Get-ChildItem \"$env:LOCALAPPDATA\\\\Programs\\\\Eclipse Adoptium\" -ErrorAction SilentlyContinue | Select-Object FullName -First 5)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Read(//c/Users/User/**)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\User\\\\AppData\\\\Local\" -ErrorAction SilentlyContinue | Select-Object Name | Where-Object { $_.Name -match \"Android|Google|JetBrains\" })",
+      "PowerShell(where.exe java 2>&1; $env:JAVA_HOME; [System.Environment]::GetEnvironmentVariable\\(\"JAVA_HOME\", \"Machine\"\\))",
+      "PowerShell(& \"C:\\\\Program Files \\(x86\\)\\\\Common Files\\\\Oracle\\\\Java\\\\javapath\\\\java.exe\" -version 2>&1)"
     ]
   }
 }

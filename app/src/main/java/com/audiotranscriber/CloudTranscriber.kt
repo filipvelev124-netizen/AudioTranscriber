@@ -20,10 +20,13 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.math.sqrt
 
-// Captures raw PCM via AudioRecord (no audio-focus conflict with other apps),
-// converts to WAV, and sends to the free Hugging Face Whisper large-v3-turbo API.
-class BulgarianTranscriber(
+// Captures raw PCM via AudioRecord (no audio-focus conflict),
+// converts to WAV, and sends to the free Hugging Face Whisper API.
+// Works for any language — Whisper auto-detects from audio.
+class CloudTranscriber(
     private val context: Context,
+    private val language: Language,
+    private val silenceThreshold: Double,
     private val onPartial: (String) -> Unit,
     private val onResult: (String) -> Unit,
     private val onError: (String) -> Unit
@@ -48,11 +51,13 @@ class BulgarianTranscriber(
         record.startRecording()
 
         job = scope.launch {
-            val samples  = mutableListOf<Short>()
-            val buf      = ShortArray(4_096)
-            val startMs  = System.currentTimeMillis()
-            var lastLoud = startMs
-            var gotAudio = false
+            val samples    = mutableListOf<Short>()
+            val buf        = ShortArray(4_096)
+            val rmsWindow  = ArrayDeque<Float>()
+            val startMs    = System.currentTimeMillis()
+            var lastLoud   = startMs
+            var gotAudio   = false
+            var lastNotif  = 0L
 
             while (isActive) {
                 val now     = System.currentTimeMillis()
@@ -64,7 +69,8 @@ class BulgarianTranscriber(
 
                 var sum = 0.0
                 for (i in 0 until read) sum += buf[i].toDouble() * buf[i]
-                if (sqrt(sum / read) > SILENCE_THRESHOLD) { gotAudio = true; lastLoud = now }
+                val rms = sqrt(sum / read)
+                if (rms > silenceThreshold) { gotAudio = true; lastLoud = now }
 
                 if (!gotAudio && elapsed > STARTUP_TIMEOUT) {
                     releaseRecord()
@@ -77,11 +83,19 @@ class BulgarianTranscriber(
 
                 for (i in 0 until read) samples.add(buf[i])
 
-                // Live progress feedback
-                if (gotAudio) {
+                if (now - lastNotif > 400L) {
+                    lastNotif = now
+                    if (rmsWindow.size >= 8) rmsWindow.removeFirst()
+                    rmsWindow.addLast(rms.toFloat())
+                    val bar = rmsWindow.joinToString("") { r ->
+                        when {
+                            r > 800 -> "█"; r > 400 -> "▆"; r > 200 -> "▄"
+                            r > 100 -> "▂"; else    -> "▁"
+                        }
+                    }
                     val secs = elapsed / 1_000
                     withContext(Dispatchers.Main) {
-                        try { onPartial("🎙 Recording… ${secs}s") } catch (_: Throwable) {}
+                        try { onPartial(if (gotAudio) "$bar  ${secs}s" else "▶ Play the voice message now…") } catch (_: Throwable) {}
                     }
                 }
             }
@@ -135,7 +149,6 @@ class BulgarianTranscriber(
         } catch (_: Throwable) { null }
     }
 
-    // Standard PCM-16 mono WAV, little-endian
     private fun samplesToWav(samples: ShortArray, sampleRate: Int): ByteArray {
         val pcmBytes = samples.size * 2
         val out = ByteArrayOutputStream(44 + pcmBytes)
@@ -175,15 +188,13 @@ class BulgarianTranscriber(
             })
         }
 
-        // Response: {"text": " transcribed text here"}
         return raw.substringAfter("\"text\":\"").trimStart().substringBefore("\"").trim()
     }
 
     companion object {
-        private const val SAMPLE_RATE       = 16_000
-        private const val SILENCE_THRESHOLD = 150.0
-        private const val SILENCE_GAP_MS    = 2_000L
-        private const val STARTUP_TIMEOUT   = 15_000L
-        private const val HARD_LIMIT_MS     = 90_000L
+        private const val SAMPLE_RATE     = 16_000
+        private const val SILENCE_GAP_MS  = 2_000L
+        private const val STARTUP_TIMEOUT = 15_000L
+        private const val HARD_LIMIT_MS   = 90_000L
     }
 }

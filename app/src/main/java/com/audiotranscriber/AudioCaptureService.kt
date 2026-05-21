@@ -25,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.sqrt
 
 class AudioCaptureService : Service() {
@@ -44,21 +45,17 @@ class AudioCaptureService : Service() {
         @Volatile var isRunning   = false
             private set
 
-        private const val SILENCE_THRESHOLD = 150.0
         private const val SILENCE_GAP_MS    = 2_000L
         private const val STARTUP_TIMEOUT   = 15_000L
         private const val HARD_LIMIT_MS     = 90_000L
-        private const val NOTIF_THROTTLE_MS = 1_500L
+        private const val NOTIF_THROTTLE_MS = 400L
     }
 
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
-    // Lambda that stops whichever online transcriber is active (BulgarianTranscriber etc.)
-    private var stopOnlineCapture: (() -> Unit)? = null
+    private var stopCloudCapture: (() -> Unit)? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // Stores the last transcription result so the copy action can read it
-    // without needing to pass data inside a PendingIntent
     private var lastResult = ""
     private var copyReceiverRegistered = false
 
@@ -66,8 +63,7 @@ class AudioCaptureService : Service() {
         override fun onReceive(context: Context, intent: Intent) {
             try {
                 if (lastResult.isEmpty()) return
-                val cb = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                cb.setPrimaryClip(ClipData.newPlainText("Transcript", lastResult))
+                copyToClipboard(lastResult)
                 notify(buildResultNotification(lastResult, copied = true))
             } catch (_: Throwable) {}
         }
@@ -88,8 +84,6 @@ class AudioCaptureService : Service() {
             true
         } catch (_: Throwable) {
             try {
-                // Bare-minimum fallback — if even this fails, stopSelf() prevents the
-                // ForegroundServiceDidNotStartInTimeException system crash
                 startForeground(NOTIFICATION_ID,
                     NotificationCompat.Builder(this, CHANNEL_ID)
                         .setContentTitle("Audio Transcriber")
@@ -127,22 +121,25 @@ class AudioCaptureService : Service() {
     private fun startCapture() {
         captureJob?.cancel()
         releaseAudioRecord()
-        try { stopOnlineCapture?.invoke() } catch (_: Throwable) {}
-        stopOnlineCapture = null
+        try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
+        stopCloudCapture = null
 
-        // Online languages (e.g. Bulgarian) use Android's SpeechRecognizer instead of Vosk
-        val language = Language.getSelected(this)
-        if (language.isOnline) {
-            startOnlineCapture(language)
+        val language  = Language.getSelected(this)
+        val threshold = AppPrefs.getSilenceThreshold(this)
+
+        // Cloud path: Bulgarian always uses cloud; other languages if "Use cloud" is on
+        if (language.isOnline || AppPrefs.isUseCloud(this)) {
+            startCloudCapture(language, threshold)
             return
         }
 
+        // Local Vosk path
         if (!LocalTranscriber.isReady) {
             notify(buildIdleNotification("⏳ Loading model (first time, ~10 sec)…"))
             LocalTranscriber.initialize(
                 context = this,
                 onReady = { try { startCapture() } catch (_: Throwable) {} },
-                onError = { e -> try { notify(buildIdleNotification("❌ Model failed — re-download in the app")) } catch (_: Throwable) {} }
+                onError = { _ -> try { notify(buildIdleNotification("❌ Model failed — re-download in the app")) } catch (_: Throwable) {} }
             )
             return
         }
@@ -161,15 +158,16 @@ class AudioCaptureService : Service() {
         audioRecord = record
         isRecording = true
         record.startRecording()
-        notify(buildRecordingNotification("Play the voice message now…"))
+        notify(buildRecordingNotification("▶ Play the voice message now…"))
 
         captureJob = scope.launch {
             try {
-                val buf       = ShortArray(4_096)
-                val startMs   = System.currentTimeMillis()
-                var lastLoud  = startMs
-                var gotAudio  = false
-                var lastNotif = 0L
+                val buf         = ShortArray(4_096)
+                val rmsWindow   = ArrayDeque<Float>()
+                val startMs     = System.currentTimeMillis()
+                var lastLoud    = startMs
+                var gotAudio    = false
+                var lastNotif   = 0L
                 val accumulated = StringBuilder()
 
                 while (isActive) {
@@ -182,13 +180,17 @@ class AudioCaptureService : Service() {
 
                     var sum = 0.0
                     for (i in 0 until read) sum += buf[i].toDouble() * buf[i]
-                    if (sqrt(sum / read) > SILENCE_THRESHOLD) { gotAudio = true; lastLoud = now }
+                    val rms = sqrt(sum / read)
+                    if (rms > threshold) { gotAudio = true; lastLoud = now }
 
                     if (!gotAudio && elapsed > STARTUP_TIMEOUT) {
                         notify(buildIdleNotification("⏰ No audio — play the message louder or closer to the mic"))
                         break
                     }
                     if (gotAudio && (now - lastLoud) > SILENCE_GAP_MS) break
+
+                    if (rmsWindow.size >= 8) rmsWindow.removeFirst()
+                    rmsWindow.addLast(rms.toFloat())
 
                     try {
                         val bytes = ByteArray(read * 2)
@@ -203,9 +205,11 @@ class AudioCaptureService : Service() {
                                 accumulated.append(text)
                             }
                         }
-                        if (accumulated.isNotEmpty() && now - lastNotif > NOTIF_THROTTLE_MS) {
+                        if (now - lastNotif > NOTIF_THROTTLE_MS) {
                             lastNotif = now
-                            notify(buildRecordingNotification("🎙 $accumulated…"))
+                            val bar = rmsBar(rmsWindow)
+                            val body = if (accumulated.isNotEmpty()) "$bar  $accumulated…" else "$bar  ${if (gotAudio) "Transcribing…" else "Play the voice message now…"}"
+                            notify(buildRecordingNotification(body))
                         }
                     } catch (_: Throwable) {}
                 }
@@ -224,17 +228,11 @@ class AudioCaptureService : Service() {
                         accumulated.isNotEmpty()                              -> accumulated.toString()
                         else                                                  -> ""
                     }
-                    if (result.isEmpty()) {
-                        notify(buildIdleNotification("🔇 No speech detected — tap to try again"))
-                    } else {
-                        lastResult = result
-                        notify(buildResultNotification(result, copied = false))
-                    }
+                    withContext(Dispatchers.Main) { onTranscriptionComplete(result, language) }
                 } catch (_: Throwable) {
                     try { recognizer.close() } catch (_: Throwable) {}
                     if (accumulated.isNotEmpty()) {
-                        lastResult = accumulated.toString()
-                        try { notify(buildResultNotification(accumulated.toString(), copied = false)) } catch (_: Throwable) {}
+                        withContext(Dispatchers.Main) { onTranscriptionComplete(accumulated.toString(), language) }
                     } else {
                         try { notify(buildIdleNotification("🔇 No speech detected")) } catch (_: Throwable) {}
                     }
@@ -252,33 +250,54 @@ class AudioCaptureService : Service() {
         }
     }
 
-    private fun startOnlineCapture(language: Language) {
+    private fun startCloudCapture(language: Language, threshold: Double) {
         isRecording = true
-        notify(buildRecordingNotification("🎙 Recording (${language.displayName})… play the message now"))
+        notify(buildRecordingNotification("▶ Play the voice message now…"))
 
-        val transcriber = BulgarianTranscriber(
-            context   = this,
+        val transcriber = CloudTranscriber(
+            context          = this,
+            language         = language,
+            silenceThreshold = threshold,
             onPartial = { partial ->
                 try { notify(buildRecordingNotification(partial)) } catch (_: Throwable) {}
             },
             onResult  = { text ->
                 isRecording = false
-                stopOnlineCapture = null
-                if (text.isEmpty()) {
-                    try { notify(buildIdleNotification("🔇 No speech detected — tap to try again")) } catch (_: Throwable) {}
-                } else {
-                    lastResult = text
-                    try { notify(buildResultNotification(text, copied = false)) } catch (_: Throwable) {}
-                }
+                stopCloudCapture = null
+                onTranscriptionComplete(text, language)
             },
             onError   = { msg ->
                 isRecording = false
-                stopOnlineCapture = null
+                stopCloudCapture = null
                 try { notify(buildIdleNotification(msg)) } catch (_: Throwable) {}
             }
         )
-        stopOnlineCapture = { transcriber.stop() }
+        stopCloudCapture = { transcriber.stop() }
         transcriber.start()
+    }
+
+    // Called on the main thread after every successful transcription
+    private fun onTranscriptionComplete(result: String, language: Language) {
+        if (result.isEmpty()) {
+            try { notify(buildIdleNotification("🔇 No speech detected — tap to try again")) } catch (_: Throwable) {}
+            return
+        }
+        lastResult = result
+
+        // Auto-copy if enabled
+        val autoCopy = AppPrefs.isAutoCopy(this)
+        if (autoCopy) copyToClipboard(result)
+
+        // Persist to history
+        scope.launch {
+            try {
+                AppDatabase.get(this@AudioCaptureService).transcriptDao().insert(
+                    Transcript(timestamp = System.currentTimeMillis(), languageName = language.displayName, text = result)
+                )
+            } catch (_: Throwable) {}
+        }
+
+        try { notify(buildResultNotification(result, copied = autoCopy)) } catch (_: Throwable) {}
     }
 
     fun stopCapture() {
@@ -286,8 +305,8 @@ class AudioCaptureService : Service() {
         captureJob = null
         isRecording = false
         releaseAudioRecord()
-        try { stopOnlineCapture?.invoke() } catch (_: Throwable) {}
-        stopOnlineCapture = null
+        try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
+        stopCloudCapture = null
         try { notify(buildIdleNotification()) } catch (_: Throwable) {}
     }
 
@@ -297,8 +316,23 @@ class AudioCaptureService : Service() {
         audioRecord = null
     }
 
+    private fun copyToClipboard(text: String) {
+        try {
+            val cb = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cb.setPrimaryClip(ClipData.newPlainText("Transcript", text))
+        } catch (_: Throwable) {}
+    }
+
+    private fun rmsBar(window: ArrayDeque<Float>): String =
+        window.joinToString("") { r ->
+            when {
+                r > 800 -> "█"; r > 400 -> "▆"; r > 200 -> "▄"
+                r > 100 -> "▂"; else    -> "▁"
+            }
+        }.ifEmpty { "▁▁▁▁▁▁▁▁" }
+
     private fun buildMicCapture(): AudioRecord? {
-        val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val minBuf  = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val bufSize = if (minBuf > 0) maxOf(minBuf * 4, 16_384) else 16_384
         return try {
             AudioRecord(
@@ -309,13 +343,13 @@ class AudioCaptureService : Service() {
     }
 
     override fun onDestroy() {
-        isRunning = false
+        isRunning   = false
         isRecording = false
         try { captureJob?.cancel() } catch (_: Throwable) {}
         try { scope.cancel() } catch (_: Throwable) {}
         try { releaseAudioRecord() } catch (_: Throwable) {}
-        try { stopOnlineCapture?.invoke() } catch (_: Throwable) {}
-        stopOnlineCapture = null
+        try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
+        stopCloudCapture = null
         if (copyReceiverRegistered) try { unregisterReceiver(copyReceiver) } catch (_: Throwable) {}
         super.onDestroy()
     }
@@ -360,6 +394,22 @@ class AudioCaptureService : Service() {
         )
     )
 
+    private fun shareAction(): NotificationCompat.Action {
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, lastResult)
+        }
+        val chooser = Intent.createChooser(sendIntent, "Share transcript").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val pi = PendingIntent.getActivity(
+            this, 1,
+            chooser,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return NotificationCompat.Action(0, "↗ Share", pi)
+    }
+
     private fun buildIdleNotification(text: String = "Tap 🎙 Transcribe, then play the voice message") =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Audio Transcriber — Ready")
@@ -369,7 +419,7 @@ class AudioCaptureService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(serviceAction(ACTION_START_CAPTURE, "🎙 Transcribe"))
-            .addAction(serviceAction(ACTION_STOP_SERVICE, "✕ Stop service"))
+            .addAction(serviceAction(ACTION_STOP_SERVICE,  "✕ Stop service"))
             .build()
 
     private fun buildRecordingNotification(text: String) =
@@ -392,8 +442,10 @@ class AudioCaptureService : Service() {
             .setContentIntent(openAppIntent())
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .addAction(copyAction())
-            .addAction(serviceAction(ACTION_START_CAPTURE, "🎙 Transcribe again"))
-            .addAction(serviceAction(ACTION_STOP_SERVICE, "✕ Stop service"))
+            .apply {
+                if (!copied) addAction(copyAction())   // already copied → skip
+                addAction(shareAction())
+                addAction(serviceAction(ACTION_START_CAPTURE, "🎙 Again"))
+            }
             .build()
 }
