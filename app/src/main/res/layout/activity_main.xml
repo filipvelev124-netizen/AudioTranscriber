@@ -56,7 +56,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Transcribe voice messages in any app — 100% on-device, free, private."
+            android:text="Transcribe voice messages in any app — free Whisper cloud, no downloads needed."
             android:textSize="14sp"
             android:textColor="@color/textSecondary"
             android:layout_marginBottom="24dp" />
@@ -315,7 +315,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="With auto-detect (Step 4 enabled):\n1. Receive a voice message in WhatsApp, Telegram, etc.\n2. A banner appears — tap 🎙 Transcribe.\n3. Immediately play the voice message.\n4. The transcript appears in the notification — tap 📋 Copy.\n\nManually (without Step 4):\n1. Pull down the notification shade.\n2. Tap 🎙 Transcribe in the Audio Transcriber notification.\n3. Immediately play the voice message.\n4. Tap 📋 Copy when done.\n\nAll speech processing happens on your device — nothing leaves your phone."
+            android:text="With auto-detect (Step 4 enabled):\n1. Receive a voice message in WhatsApp, Telegram, etc.\n2. A banner appears — tap 🎙 Transcribe.\n3. Immediately play the voice message.\n4. The transcript is copied automatically.\n\nManually (without Step 4):\n1. Pull down the notification shade.\n2. Tap 🎙 Transcribe in the Audio Transcriber notification.\n3. Immediately play the voice message.\n4. The transcript is copied automatically.\n\nCloud mode (default): audio is sent to the free Whisper API — accurate, no downloads.\nOffline mode: switch off 'Use Whisper cloud' in ⚙ Settings and download a language model."
             android:textSize="14sp"
             android:textColor="@color/textSecondary"
             android:lineSpacingMultiplier="1.5" />

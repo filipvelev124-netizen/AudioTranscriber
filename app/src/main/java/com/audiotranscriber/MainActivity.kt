@@ -105,6 +105,7 @@ class MainActivity : AppCompatActivity() {
         updateLanguageButton()
         updateTokenPanel()
         requestMissingPermissions()
+        if (AppPrefs.getHfToken(this).isBlank()) showFirstRunPrompt()
     }
 
     override fun onResume() {
@@ -124,9 +125,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateTokenPanel() {
-        val lang = Language.getSelected(this)
-        layoutHfToken.isVisible = lang.isOnline
-        if (lang.isOnline) {
+        val lang      = Language.getSelected(this)
+        val showPanel = lang.isOnline || AppPrefs.isUseCloud(this)
+        layoutHfToken.isVisible = showPanel
+        if (showPanel) {
             val saved = AppPrefs.getHfToken(this)
             if (saved.isNotEmpty()) {
                 etHfToken.setText(saved)
@@ -135,6 +137,24 @@ class MainActivity : AppCompatActivity() {
                 tvTokenStatus.text = ""
             }
         }
+    }
+
+    private fun showFirstRunPrompt() {
+        AlertDialog.Builder(this)
+            .setTitle("One quick setup step")
+            .setMessage(
+                "Audio Transcriber uses the free Whisper cloud API — no large downloads needed.\n\n" +
+                "You need a free Hugging Face token:\n" +
+                "1. Go to huggingface.co → sign up free\n" +
+                "2. Settings → Access Tokens → New token (Read)\n" +
+                "3. Paste it in the field on this screen\n\n" +
+                "Takes about 1 minute. Tap 'Open HuggingFace' to do it now."
+            )
+            .setPositiveButton("Got it", null)
+            .setNeutralButton("Open HuggingFace") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://huggingface.co/settings/tokens")))
+            }
+            .show()
     }
 
     private fun showLanguagePicker() {
@@ -200,8 +220,13 @@ class MainActivity : AppCompatActivity() {
         val lang = Language.getSelected(this)
 
         // Step 1: model
-        if (lang.isOnline) {
-            tvModelStatus.text = "Speech model: 🌐 Online — uses internet (${lang.displayName})"
+        val useCloud = lang.isOnline || AppPrefs.isUseCloud(this)
+        if (useCloud) {
+            val hasToken = AppPrefs.getHfToken(this).isNotBlank()
+            tvModelStatus.text = if (hasToken)
+                "Speech model: 🌐 Whisper cloud — ready"
+            else
+                "Speech model: ⚠️ Whisper cloud — paste your HF token above"
             btnDownloadModel.isEnabled = false
             btnDownloadModel.text = "No download needed"
         } else if (ModelDownloader.isDownloaded(this, lang)) {
@@ -262,8 +287,8 @@ class MainActivity : AppCompatActivity() {
             btnAppSettings.isVisible = showHint
         }
 
-        // Pre-load model into memory if downloaded for the current language
-        if (!lang.isOnline && ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady) {
+        // Pre-load model into memory if using local mode and model is downloaded
+        if (!useCloud && ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady) {
             LocalTranscriber.initialize(
                 context = this,
                 onReady = { tvModelStatus.text = "Speech model: ✅ Loaded (${lang.displayName})" },

@@ -31,7 +31,7 @@ object AppPrefs {
     // ── Use cloud (Whisper) for all languages ─────────────────────────────────
 
     fun isUseCloud(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_USE_CLOUD, false)
+        prefs(context).getBoolean(KEY_USE_CLOUD, true)
 
     fun setUseCloud(context: Context, v: Boolean) {
         prefs(context).edit().putBoolean(KEY_USE_CLOUD, v).apply()

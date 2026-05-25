@@ -31,7 +31,10 @@
       "Read(//c/Users/User/**)",
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\User\\\\AppData\\\\Local\" -ErrorAction SilentlyContinue | Select-Object Name | Where-Object { $_.Name -match \"Android|Google|JetBrains\" })",
       "PowerShell(where.exe java 2>&1; $env:JAVA_HOME; [System.Environment]::GetEnvironmentVariable\\(\"JAVA_HOME\", \"Machine\"\\))",
-      "PowerShell(& \"C:\\\\Program Files \\(x86\\)\\\\Common Files\\\\Oracle\\\\Java\\\\javapath\\\\java.exe\" -version 2>&1)"
+      "PowerShell(& \"C:\\\\Program Files \\(x86\\)\\\\Common Files\\\\Oracle\\\\Java\\\\javapath\\\\java.exe\" -version 2>&1)",
+      "Bash(adb devices *)",
+      "PowerShell(Get-Command adb -ErrorAction SilentlyContinue; Get-ChildItem \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" -ErrorAction SilentlyContinue | Select-Object FullName)",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\" -ErrorAction SilentlyContinue | Select-Object Name)"
     ]
   }
 }
