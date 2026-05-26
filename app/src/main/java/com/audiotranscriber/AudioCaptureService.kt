@@ -53,7 +53,6 @@ class AudioCaptureService : Service() {
 
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
-    private var stopCloudCapture: (() -> Unit)? = null
     private var stopWhisperCapture: (() -> Unit)? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -122,19 +121,11 @@ class AudioCaptureService : Service() {
     private fun startCapture() {
         captureJob?.cancel()
         releaseAudioRecord()
-        try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
-        stopCloudCapture = null
         try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
         stopWhisperCapture = null
 
         val language  = Language.getSelected(this)
         val threshold = AppPrefs.getSilenceThreshold(this)
-
-        // Cloud path
-        if (AppPrefs.isUseCloud(this)) {
-            startCloudCapture(language, threshold)
-            return
-        }
 
         // Whisper offline path — one model covers all languages including Bulgarian
         if (WhisperEngine.isModelDownloaded(this)) {
@@ -142,9 +133,9 @@ class AudioCaptureService : Service() {
             return
         }
 
-        // Bulgarian has no Vosk model; user needs Whisper or cloud
-        if (language.isOnline) {
-            notify(buildIdleNotification("⚠️ Enable cloud (⚙) or download Whisper model for ${language.displayName}"))
+        // Language has no Vosk model (e.g. Bulgarian) — needs Whisper
+        if (language.urls.isEmpty()) {
+            notify(buildIdleNotification("⬇ Download the Whisper model in the app to use ${language.displayName}"))
             return
         }
 
@@ -265,32 +256,6 @@ class AudioCaptureService : Service() {
         }
     }
 
-    private fun startCloudCapture(language: Language, threshold: Double) {
-        isRecording = true
-        notify(buildRecordingNotification("▶ Play the voice message now…"))
-
-        val transcriber = CloudTranscriber(
-            context          = this,
-            language         = language,
-            silenceThreshold = threshold,
-            onPartial = { partial ->
-                try { notify(buildRecordingNotification(partial)) } catch (_: Throwable) {}
-            },
-            onResult  = { text ->
-                isRecording = false
-                stopCloudCapture = null
-                onTranscriptionComplete(text, language)
-            },
-            onError   = { msg ->
-                isRecording = false
-                stopCloudCapture = null
-                try { notify(buildIdleNotification(msg)) } catch (_: Throwable) {}
-            }
-        )
-        stopCloudCapture = { transcriber.stop() }
-        transcriber.start()
-    }
-
     private fun startWhisperCapture(language: Language, threshold: Double) {
         if (!WhisperEngine.isReady) {
             notify(buildIdleNotification("⏳ Loading Whisper model (first time, ~5 sec)…"))
@@ -354,8 +319,6 @@ class AudioCaptureService : Service() {
         captureJob = null
         isRecording = false
         releaseAudioRecord()
-        try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
-        stopCloudCapture = null
         try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
         stopWhisperCapture = null
         try { notify(buildIdleNotification()) } catch (_: Throwable) {}

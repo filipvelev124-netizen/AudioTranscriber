@@ -4,20 +4,9 @@ import android.content.Context
 
 object AppPrefs {
     private const val PREFS                 = "transcriber_prefs"
-    private const val KEY_TOKEN             = "hf_api_token"
     private const val KEY_AUTO_COPY         = "auto_copy"
-    private const val KEY_USE_CLOUD         = "use_cloud"
     private const val KEY_SENSITIVITY       = "sensitivity"       // 0–9
     private const val KEY_DISABLED_PACKAGES = "disabled_packages"
-
-    // ── HF token ─────────────────────────────────────────────────────────────
-
-    fun getHfToken(context: Context): String =
-        prefs(context).getString(KEY_TOKEN, "") ?: ""
-
-    fun setHfToken(context: Context, token: String) {
-        prefs(context).edit().putString(KEY_TOKEN, token.trim()).apply()
-    }
 
     // ── Auto-copy ─────────────────────────────────────────────────────────────
 
@@ -26,15 +15,6 @@ object AppPrefs {
 
     fun setAutoCopy(context: Context, v: Boolean) {
         prefs(context).edit().putBoolean(KEY_AUTO_COPY, v).apply()
-    }
-
-    // ── Use cloud (Whisper) for all languages ─────────────────────────────────
-
-    fun isUseCloud(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_USE_CLOUD, true)
-
-    fun setUseCloud(context: Context, v: Boolean) {
-        prefs(context).edit().putBoolean(KEY_USE_CLOUD, v).apply()
     }
 
     // ── Microphone sensitivity ────────────────────────────────────────────────

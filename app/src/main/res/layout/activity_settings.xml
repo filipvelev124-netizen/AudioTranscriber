@@ -78,11 +78,11 @@
             android:paddingTop="12dp"
             android:paddingBottom="24dp">
 
-            <!-- ──── Section: Transcription ──── -->
+            <!-- ──── Section: Model ──── -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Transcription"
+                android:text="Model"
                 android:textSize="11sp"
                 android:textStyle="bold"
                 android:textAllCaps="true"
@@ -103,159 +103,54 @@
                 app:strokeWidth="1dp">
 
                 <LinearLayout
+                    android:id="@+id/rowWhisperModel"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:minHeight="56dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
+                    android:background="?attr/selectableItemBackground">
 
-                    <!-- Use Cloud toggle -->
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_mic"
+                        android:tint="@color/on_surface_variant" />
+
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:minHeight="56dp"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
-                        android:paddingTop="8dp"
-                        android:paddingBottom="8dp">
-
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@drawable/ic_cloud_24"
-                            android:tint="@color/on_surface_variant" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:layout_marginStart="16dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Use Whisper Cloud"
-                                android:textSize="15sp"
-                                android:textColor="@color/on_surface" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="More accurate, no download needed"
-                                android:textSize="12sp"
-                                android:textColor="@color/on_surface_variant" />
-                        </LinearLayout>
-
-                        <androidx.appcompat.widget.SwitchCompat
-                            android:id="@+id/switchUseCloud"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/outline_variant"
-                        android:alpha="0.3" />
-
-                    <!-- HF Token row (visible only in cloud mode) -->
-                    <LinearLayout
-                        android:id="@+id/rowHfToken"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:minHeight="56dp"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
-                        android:paddingTop="8dp"
-                        android:paddingBottom="8dp"
-                        android:background="?attr/selectableItemBackground"
-                        android:visibility="gone">
-
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@drawable/ic_key_24"
-                            android:tint="@color/on_surface_variant" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:layout_marginStart="16dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Hugging Face Token"
-                                android:textSize="15sp"
-                                android:textColor="@color/on_surface" />
-
-                            <TextView
-                                android:id="@+id/tvTokenPreview"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Not set"
-                                android:textSize="12sp"
-                                android:textColor="@color/on_surface_variant" />
-                        </LinearLayout>
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:src="@drawable/ic_chevron_right_24"
-                            android:tint="@color/on_surface_variant" />
-                    </LinearLayout>
-
-                    <View
-                        android:id="@+id/dividerHfToken"
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/outline_variant"
-                        android:alpha="0.3"
-                        android:visibility="gone" />
-
-                    <!-- Model info row -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:minHeight="56dp"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
-                        android:paddingTop="8dp"
-                        android:paddingBottom="8dp">
-
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@drawable/ic_mic"
-                            android:tint="@color/on_surface_variant" />
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="16dp">
 
                         <TextView
-                            android:layout_width="0dp"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="Transcription Model"
+                            android:text="Whisper Model"
                             android:textSize="15sp"
-                            android:textColor="@color/on_surface"
-                            android:layout_marginStart="16dp" />
+                            android:textColor="@color/on_surface" />
 
                         <TextView
-                            android:id="@+id/tvModelValue"
+                            android:id="@+id/tvModelStatus"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Whisper"
-                            android:textSize="13sp"
-                            android:textColor="@color/primary" />
+                            android:text="Checking…"
+                            android:textSize="12sp"
+                            android:textColor="@color/on_surface_variant" />
                     </LinearLayout>
 
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_chevron_right_24"
+                        android:tint="@color/on_surface_variant" />
                 </LinearLayout>
+
             </com.google.android.material.card.MaterialCardView>
 
             <!-- ──── Section: Behavior ──── -->

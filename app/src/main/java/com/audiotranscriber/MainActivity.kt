@@ -283,18 +283,22 @@ class MainActivity : AppCompatActivity() {
     private fun updateChips() {
         val lang = Language.getSelected(this)
         chipLanguage.text = lang.displayName
-        val useCloud = AppPrefs.isUseCloud(this)
-        val modeLabel = if (useCloud) "Cloud" else "Offline"
-        chipMode.text = modeLabel
-        tvModeChip.text = modeLabel
+        val engineLabel = when {
+            WhisperEngine.isModelDownloaded(this)          -> "Whisper"
+            ModelDownloader.isDownloaded(this, lang)       -> "Vosk"
+            else                                           -> "No model"
+        }
+        chipMode.text = engineLabel
+        tvModeChip.text = engineLabel
     }
 
     // ── Language picker ───────────────────────────────────────────────────────
 
     private fun showLanguagePicker() {
         val languages = Language.values()
+        val whisperReady = WhisperEngine.isModelDownloaded(this)
         val names = languages.map { lang ->
-            if (ModelDownloader.isDownloaded(this, lang)) "✅ ${lang.displayName}"
+            if (whisperReady || ModelDownloader.isDownloaded(this, lang)) "✅ ${lang.displayName}"
             else lang.displayName
         }.toTypedArray()
         val currentIndex = languages.indexOf(Language.getSelected(this)).coerceAtLeast(0)
@@ -344,20 +348,12 @@ class MainActivity : AppCompatActivity() {
     )
 
     private fun getSetupIssue(): SetupIssue? {
-        val useCloud = AppPrefs.isUseCloud(this)
-        if (useCloud && AppPrefs.getHfToken(this).isBlank()) {
-            return SetupIssue(
-                "Token required",
-                "Paste your Hugging Face API token in Settings to enable cloud transcription.",
-                "Open Settings", "settings"
-            )
-        }
-        if (!useCloud && !WhisperEngine.isModelDownloaded(this) &&
+        if (!WhisperEngine.isModelDownloaded(this) &&
             !ModelDownloader.isDownloaded(this, Language.getSelected(this))
         ) {
             return SetupIssue(
                 "Model needed",
-                "Download the Whisper model (~75 MB) for offline transcription in all languages.",
+                "Download the Whisper model (~75 MB) — works offline for all languages including Bulgarian.",
                 "Download", "download"
             )
         }
@@ -385,12 +381,11 @@ class MainActivity : AppCompatActivity() {
             btnSetupAction.setOnClickListener { handleSetupAction(issue.actionType) }
         }
 
-        val useCloud = AppPrefs.isUseCloud(this)
-        if (!useCloud && WhisperEngine.isModelDownloaded(this) && !WhisperEngine.isReady) {
+        if (WhisperEngine.isModelDownloaded(this) && !WhisperEngine.isReady) {
             WhisperEngine.initialize(this, onReady = {}, onError = {})
         }
         val lang = Language.getSelected(this)
-        if (!useCloud && !WhisperEngine.isModelDownloaded(this) && !lang.isOnline &&
+        if (!WhisperEngine.isModelDownloaded(this) &&
             ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady
         ) {
             LocalTranscriber.initialize(this, onReady = {}, onError = {})

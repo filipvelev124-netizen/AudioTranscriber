@@ -24,7 +24,7 @@ enum class Language(
     DUTCH(      "Dutch (Nederlands)",   listOf("https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip"),    whisperCode = "nl"),
     TURKISH(    "Turkish (Türkçe)",     listOf("https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip"),     whisperCode = "tr"),
     KOREAN(     "Korean (한국어)",        listOf("https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip"),    whisperCode = "ko"),
-    BULGARIAN(  "Bulgarian (Български)", emptyList(), isOnline = true, onlineLocale = "bg-BG", whisperCode = "bg");
+    BULGARIAN(  "Bulgarian (Български)", emptyList(), whisperCode = "bg");
 
     companion object {
         private const val PREFS   = "transcriber_prefs"

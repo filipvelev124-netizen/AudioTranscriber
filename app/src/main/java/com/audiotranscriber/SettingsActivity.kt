@@ -15,17 +15,12 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.isVisible
 import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.google.android.material.textfield.TextInputEditText
 
 class SettingsActivity : AppCompatActivity() {
 
-    private lateinit var switchUseCloud: SwitchCompat
     private lateinit var switchAutoCopy: SwitchCompat
     private lateinit var switchService: SwitchCompat
-    private lateinit var rowHfToken: LinearLayout
-    private lateinit var dividerHfToken: android.view.View
-    private lateinit var tvTokenPreview: TextView
-    private lateinit var tvModelValue: TextView
+    private lateinit var tvModelStatus: TextView
     private lateinit var tvSensitivityValue: TextView
     private lateinit var tvNotifStatus: TextView
     private lateinit var tvServiceStatus: TextView
@@ -38,18 +33,14 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.hide()
         setContentView(R.layout.activity_settings)
 
-        switchUseCloud      = findViewById(R.id.switchUseCloud)
-        switchAutoCopy      = findViewById(R.id.switchAutoCopy)
-        switchService       = findViewById(R.id.switchService)
-        rowHfToken          = findViewById(R.id.rowHfToken)
-        dividerHfToken      = findViewById(R.id.dividerHfToken)
-        tvTokenPreview      = findViewById(R.id.tvTokenPreview)
-        tvModelValue        = findViewById(R.id.tvModelValue)
-        tvSensitivityValue  = findViewById(R.id.tvSensitivityValue)
-        tvNotifStatus       = findViewById(R.id.tvNotifStatus)
-        tvServiceStatus     = findViewById(R.id.tvServiceStatus)
-        tvAppFilterSummary  = findViewById(R.id.tvAppFilterSummary)
-        bottomNav           = findViewById(R.id.bottomNav)
+        switchAutoCopy     = findViewById(R.id.switchAutoCopy)
+        switchService      = findViewById(R.id.switchService)
+        tvModelStatus      = findViewById(R.id.tvModelStatus)
+        tvSensitivityValue = findViewById(R.id.tvSensitivityValue)
+        tvNotifStatus      = findViewById(R.id.tvNotifStatus)
+        tvServiceStatus    = findViewById(R.id.tvServiceStatus)
+        tvAppFilterSummary = findViewById(R.id.tvAppFilterSummary)
+        bottomNav          = findViewById(R.id.bottomNav)
 
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
 
@@ -72,13 +63,11 @@ class SettingsActivity : AppCompatActivity() {
             when (item.itemId) {
                 R.id.nav_transcribe -> {
                     startActivity(Intent(this, MainActivity::class.java))
-                    finish()
-                    false
+                    finish(); false
                 }
                 R.id.nav_history -> {
                     startActivity(Intent(this, HistoryActivity::class.java))
-                    finish()
-                    false
+                    finish(); false
                 }
                 else -> true
             }
@@ -91,13 +80,6 @@ class SettingsActivity : AppCompatActivity() {
         switchAutoCopy.isChecked = AppPrefs.isAutoCopy(this)
         switchAutoCopy.setOnCheckedChangeListener { _, v -> AppPrefs.setAutoCopy(this, v) }
 
-        switchUseCloud.isChecked = AppPrefs.isUseCloud(this)
-        switchUseCloud.setOnCheckedChangeListener { _, v ->
-            AppPrefs.setUseCloud(this, v)
-            updateCloudRows(v)
-            updateModelValue()
-        }
-
         switchService.isChecked = AudioCaptureService.isRunning
         switchService.setOnCheckedChangeListener { _, v ->
             if (v) {
@@ -105,74 +87,47 @@ class SettingsActivity : AppCompatActivity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
                 else startService(intent)
             } else {
-                val intent = Intent(this, AudioCaptureService::class.java).apply {
+                startService(Intent(this, AudioCaptureService::class.java).apply {
                     action = AudioCaptureService.ACTION_STOP_SERVICE
-                }
-                startService(intent)
+                })
             }
         }
-    }
-
-    private fun updateCloudRows(cloudOn: Boolean) {
-        rowHfToken.isVisible     = cloudOn
-        dividerHfToken.isVisible = cloudOn
     }
 
     // ── Navigation rows ──────────────────────────────────────────────────────
 
     private fun setupRows() {
-        rowHfToken.setOnClickListener { showTokenDialog() }
+        findViewById<LinearLayout>(R.id.rowWhisperModel).setOnClickListener { showModelOptions() }
         findViewById<LinearLayout>(R.id.rowNotifAccess).setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
-        findViewById<LinearLayout>(R.id.rowSensitivity).setOnClickListener {
-            showSensitivityDialog()
-        }
-        findViewById<LinearLayout>(R.id.rowAppFilter).setOnClickListener {
-            showAppFilterDialog()
-        }
+        findViewById<LinearLayout>(R.id.rowSensitivity).setOnClickListener { showSensitivityDialog() }
+        findViewById<LinearLayout>(R.id.rowAppFilter).setOnClickListener { showAppFilterDialog() }
     }
 
     // ── Dynamic values ───────────────────────────────────────────────────────
 
     private fun refreshDynamicValues() {
-        val useCloud = AppPrefs.isUseCloud(this)
-        updateCloudRows(useCloud)
-        updateTokenPreview()
-        updateModelValue()
+        updateModelStatus()
         updateSensitivityValue()
         updateNotifStatus()
         updateServiceStatus()
         updateAppFilterSummary()
     }
 
-    private fun updateTokenPreview() {
-        val token = AppPrefs.getHfToken(this)
-        tvTokenPreview.text = when {
-            token.isBlank() -> "Not set — tap to add"
-            token.length > 8 -> "●●●●●●●● …${token.takeLast(4)}"
-            else -> "Set"
-        }
-    }
-
-    private fun updateModelValue() {
-        val useCloud = AppPrefs.isUseCloud(this)
-        tvModelValue.text = when {
-            useCloud -> "Whisper API"
-            WhisperEngine.isModelDownloaded(this) -> "Whisper offline"
-            ModelDownloader.isDownloaded(this, Language.getSelected(this)) -> "Vosk offline"
-            else -> "Not downloaded"
+    private fun updateModelStatus() {
+        tvModelStatus.text = when {
+            WhisperEngine.isModelDownloaded(this) -> "Ready — all languages offline"
+            else -> "Not downloaded — tap to download (~75 MB)"
         }
     }
 
     private fun updateSensitivityValue() {
-        val s = AppPrefs.getSensitivity(this)
-        tvSensitivityValue.text = "${s + 1} / 10"
+        tvSensitivityValue.text = "${AppPrefs.getSensitivity(this) + 1} / 10"
     }
 
     private fun updateNotifStatus() {
-        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
-            ?: ""
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: ""
         tvNotifStatus.text = if (flat.contains(packageName)) "Granted — auto-detect active"
         else "Not granted — tap to enable"
     }
@@ -201,28 +156,22 @@ class SettingsActivity : AppCompatActivity() {
         tvAppFilterSummary.text = "$activeCount of ${MESSAGING_APPS.size} apps active"
     }
 
-    // ── HF Token dialog ──────────────────────────────────────────────────────
+    // ── Whisper model options ────────────────────────────────────────────────
 
-    private fun showTokenDialog() {
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_token_input, null)
-        val etToken = view.findViewById<TextInputEditText>(R.id.etTokenInput)
-        val existing = AppPrefs.getHfToken(this)
-        if (existing.isNotBlank()) etToken.setText(existing)
-
+    private fun showModelOptions() {
+        if (!WhisperEngine.isModelDownloaded(this)) {
+            startActivity(Intent(this, MainActivity::class.java))
+            finish()
+            return
+        }
         AlertDialog.Builder(this)
-            .setTitle("Hugging Face Token")
-            .setMessage("Get a free token at huggingface.co → Settings → Access Tokens → New token (Read)")
-            .setView(view)
-            .setPositiveButton("Save") { _, _ ->
-                val token = etToken.text?.toString()?.trim().orEmpty()
-                AppPrefs.setHfToken(this, token)
-                updateTokenPreview()
+            .setTitle("Whisper Model")
+            .setMessage("Model is ready. All languages including Bulgarian work offline.\n\nRe-download if you suspect the model file is corrupted.")
+            .setNeutralButton("Re-download") { _, _ ->
+                startActivity(Intent(this, MainActivity::class.java))
+                finish()
             }
-            .setNegativeButton("Cancel", null)
-            .also { if (existing.isNotBlank()) it.setNeutralButton("Clear") { _, _ ->
-                AppPrefs.setHfToken(this, "")
-                updateTokenPreview()
-            }}
+            .setPositiveButton("OK", null)
             .show()
     }
 
