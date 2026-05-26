@@ -40,11 +40,6 @@
         <item name="colorOutline">@color/outline</item>
         <item name="colorOutlineVariant">@color/outline_variant</item>
 
-        <!-- Inverse -->
-        <item name="colorInverseSurface">@color/inverse_surface</item>
-        <item name="colorInverseOnSurface">@color/inverse_on_surface</item>
-        <item name="colorInversePrimary">@color/inverse_primary</item>
-
         <!-- System bars — dark bg needs white icons -->
         <item name="android:statusBarColor">@color/background</item>
         <item name="android:navigationBarColor">@color/surface_container_low</item>
