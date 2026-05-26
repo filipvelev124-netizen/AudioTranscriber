@@ -14,7 +14,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="8dp"
-        android:paddingEnd="20dp"
+        android:paddingEnd="8dp"
         android:background="@color/background"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -40,7 +40,6 @@
             android:textColor="@color/primary"
             android:gravity="center" />
 
-        <!-- Spacer to balance the back button -->
         <View
             android:layout_width="48dp"
             android:layout_height="48dp" />
@@ -118,14 +117,14 @@
                 android:tint="@color/on_surface_variant" />
         </LinearLayout>
 
-        <!-- Section header -->
+        <!-- Section header: Recent | Select | Delete -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingStart="20dp"
-            android:paddingEnd="8dp"
+            android:paddingEnd="4dp"
             android:layout_marginBottom="8dp">
 
             <TextView
@@ -137,6 +136,26 @@
                 android:textStyle="bold"
                 android:textColor="@color/on_surface" />
 
+            <!-- Delete selected (visible only in select mode) -->
+            <Button
+                android:id="@+id/btnDeleteSelected"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Delete (0)"
+                android:textColor="@color/error"
+                android:visibility="gone"
+                style="@style/Widget.Material3.Button.TextButton" />
+
+            <!-- Select / Cancel toggle -->
+            <Button
+                android:id="@+id/btnSelect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Select"
+                android:textColor="@color/primary"
+                style="@style/Widget.Material3.Button.TextButton" />
+
+            <!-- Clear all (visible only in normal mode) -->
             <Button
                 android:id="@+id/btnClearAll"
                 android:layout_width="wrap_content"
@@ -160,17 +179,42 @@
             android:lineSpacingMultiplier="1.6"
             android:visibility="gone" />
 
-        <!-- History list -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvHistory"
+        <!-- Scrollable list + load more -->
+        <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:paddingBottom="8dp"
-            android:clipToPadding="false"
-            android:visibility="gone" />
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvHistory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp"
+                    android:paddingBottom="4dp"
+                    android:clipToPadding="false"
+                    android:nestedScrollingEnabled="false"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/btnLoadMore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:text="Load more"
+                    android:textColor="@color/on_surface_variant"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="12dp"
+                    android:visibility="gone"
+                    style="@style/Widget.Material3.Button.TextButton" />
+
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
 
     </LinearLayout>
 

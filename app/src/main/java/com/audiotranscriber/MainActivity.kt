@@ -62,6 +62,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnViewAll: Button
     private lateinit var bottomNav: BottomNavigationView
     private lateinit var tvModeChip: TextView
+    private lateinit var tvRecordingTitle: TextView
+    private lateinit var tvRecordingSubtitle: TextView
 
     private var pulseAnimator: AnimatorSet? = null
     private val waveformAnimators = mutableListOf<ValueAnimator>()
@@ -86,11 +88,13 @@ class MainActivity : AppCompatActivity() {
         btnSetupAction   = findViewById(R.id.btnSetupAction)
         chipLanguage     = findViewById(R.id.chipLanguage)
         chipMode         = findViewById(R.id.chipMode)
-        rvRecentTranscripts = findViewById(R.id.rvRecentTranscripts)
-        tvNoRecents      = findViewById(R.id.tvNoRecents)
-        btnViewAll       = findViewById(R.id.btnViewAll)
-        bottomNav        = findViewById(R.id.bottomNav)
-        tvModeChip       = findViewById(R.id.tvModeChip)
+        rvRecentTranscripts  = findViewById(R.id.rvRecentTranscripts)
+        tvNoRecents          = findViewById(R.id.tvNoRecents)
+        btnViewAll           = findViewById(R.id.btnViewAll)
+        bottomNav            = findViewById(R.id.bottomNav)
+        tvModeChip           = findViewById(R.id.tvModeChip)
+        tvRecordingTitle     = findViewById(R.id.tvRecordingTitle)
+        tvRecordingSubtitle  = findViewById(R.id.tvRecordingSubtitle)
 
         setupWaveformBars()
         setupBottomNav()
@@ -247,12 +251,16 @@ class MainActivity : AppCompatActivity() {
     private fun setRecordingUi(recording: Boolean) {
         if (recording) {
             fabMic.setImageResource(R.drawable.ic_stop_24)
-            tvWaveformStatus.text = "Listening…"
+            tvWaveformStatus.text     = "Listening…"
+            tvRecordingTitle.text     = "Recording…"
+            tvRecordingSubtitle.text  = "Tap to stop transcription"
             startPulse()
             startWaveformAnimation()
         } else {
             fabMic.setImageResource(R.drawable.ic_mic)
-            tvWaveformStatus.text = "Ready to transcribe"
+            tvWaveformStatus.text     = "Ready to transcribe"
+            tvRecordingTitle.text     = "Start Recording"
+            tvRecordingSubtitle.text  = "Tap to capture and transcribe audio"
             stopPulse()
             stopWaveformAnimation()
         }
@@ -453,9 +461,11 @@ class MainActivity : AppCompatActivity() {
         RecyclerView.Adapter<RecentAdapter.VH>() {
 
         inner class VH(view: View) : RecyclerView.ViewHolder(view) {
-            val tvLanguage: TextView = view.findViewById(R.id.tvLanguage)
-            val tvTimestamp: TextView = view.findViewById(R.id.tvTimestamp)
-            val tvText: TextView = view.findViewById(R.id.tvText)
+            val tvLanguage:     TextView = view.findViewById(R.id.tvLanguage)
+            val tvTimestamp:    TextView = view.findViewById(R.id.tvTimestamp)
+            val tvText:         TextView = view.findViewById(R.id.tvText)
+            val tvExcerpt:      TextView = view.findViewById(R.id.tvExcerpt)
+            val tvDuration:     TextView = view.findViewById(R.id.tvDurationRecent)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -464,9 +474,18 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: VH, position: Int) {
             val item = items[position]
-            holder.tvLanguage.text = item.languageName
-            holder.tvText.text = item.text
+            holder.tvLanguage.text  = item.languageName
+            // Title = first 60 chars of text; Excerpt = full text for context
+            holder.tvText.text      = item.text.take(60).trimEnd()
+            holder.tvExcerpt.text   = item.text
             holder.tvTimestamp.text = relativeTime(item.timestamp)
+            if (item.durationMs > 0) {
+                val secs = item.durationMs / 1000
+                holder.tvDuration.text    = "%d:%02d".format(secs / 60, secs % 60)
+                holder.tvDuration.visibility = View.VISIBLE
+            } else {
+                holder.tvDuration.visibility = View.GONE
+            }
             holder.itemView.setOnClickListener {
                 val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("transcript", item.text))

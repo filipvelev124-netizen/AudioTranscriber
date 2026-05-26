@@ -55,6 +55,7 @@ class AudioCaptureService : Service() {
     private var captureJob: Job? = null
     private var stopWhisperCapture: (() -> Unit)? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var captureStartMs = 0L
 
     private var lastResult = ""
     private var copyReceiverRegistered = false
@@ -123,6 +124,7 @@ class AudioCaptureService : Service() {
         releaseAudioRecord()
         try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
         stopWhisperCapture = null
+        captureStartMs = 0L
 
         val language  = Language.getSelected(this)
         val threshold = AppPrefs.getSilenceThreshold(this)
@@ -163,6 +165,7 @@ class AudioCaptureService : Service() {
 
         audioRecord = record
         isRecording = true
+        captureStartMs = System.currentTimeMillis()
         record.startRecording()
         notify(buildRecordingNotification("▶ Play the voice message now…"))
 
@@ -268,6 +271,7 @@ class AudioCaptureService : Service() {
         }
 
         isRecording = true
+        captureStartMs = System.currentTimeMillis()
         notify(buildRecordingNotification("▶ Play the voice message now…"))
 
         val transcriber = WhisperLocalTranscriber(
@@ -297,6 +301,8 @@ class AudioCaptureService : Service() {
             return
         }
         lastResult = result
+        val durationMs = if (captureStartMs > 0L) System.currentTimeMillis() - captureStartMs else 0L
+        captureStartMs = 0L
 
         // Auto-copy if enabled
         val autoCopy = AppPrefs.isAutoCopy(this)
@@ -306,7 +312,12 @@ class AudioCaptureService : Service() {
         scope.launch {
             try {
                 AppDatabase.get(this@AudioCaptureService).transcriptDao().insert(
-                    Transcript(timestamp = System.currentTimeMillis(), languageName = language.displayName, text = result)
+                    Transcript(
+                        timestamp    = System.currentTimeMillis(),
+                        languageName = language.displayName,
+                        text         = result,
+                        durationMs   = durationMs
+                    )
                 )
             } catch (_: Throwable) {}
         }
@@ -362,8 +373,6 @@ class AudioCaptureService : Service() {
         try { captureJob?.cancel() } catch (_: Throwable) {}
         try { scope.cancel() } catch (_: Throwable) {}
         try { releaseAudioRecord() } catch (_: Throwable) {}
-        try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
-        stopCloudCapture = null
         try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
         stopWhisperCapture = null
         if (copyReceiverRegistered) try { unregisterReceiver(copyReceiver) } catch (_: Throwable) {}

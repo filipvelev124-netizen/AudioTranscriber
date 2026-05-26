@@ -3,10 +3,11 @@ package com.audiotranscriber
 import android.content.Context
 
 object AppPrefs {
-    private const val PREFS                 = "transcriber_prefs"
-    private const val KEY_AUTO_COPY         = "auto_copy"
-    private const val KEY_SENSITIVITY       = "sensitivity"       // 0–9
-    private const val KEY_DISABLED_PACKAGES = "disabled_packages"
+    private const val PREFS                  = "transcriber_prefs"
+    private const val KEY_AUTO_COPY          = "auto_copy"
+    private const val KEY_SENSITIVITY        = "sensitivity"        // 0–9
+    private const val KEY_DISABLED_PACKAGES  = "disabled_packages"
+    private const val KEY_RECORDING_QUALITY  = "recording_quality"  // "Fast"|"Balanced"|"Best"
 
     // ── Auto-copy ─────────────────────────────────────────────────────────────
 
@@ -38,6 +39,16 @@ object AppPrefs {
 
     fun setDisabledPackages(context: Context, packages: Set<String>) {
         prefs(context).edit().putStringSet(KEY_DISABLED_PACKAGES, packages).apply()
+    }
+
+    // ── Recording quality ─────────────────────────────────────────────────────
+    // Options: "Fast" | "Balanced" | "Best"
+
+    fun getRecordingQuality(context: Context): String =
+        prefs(context).getString(KEY_RECORDING_QUALITY, "Balanced") ?: "Balanced"
+
+    fun setRecordingQuality(context: Context, quality: String) {
+        prefs(context).edit().putString(KEY_RECORDING_QUALITY, quality).apply()
     }
 
     private fun prefs(context: Context) =
