@@ -32,11 +32,26 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
+      - name: Cache CMake / whisper.cpp build
+        uses: actions/cache@v4
+        with:
+          path: app/.cxx
+          key: cmake-${{ hashFiles('app/src/main/cpp/CMakeLists.txt') }}
+          restore-keys: cmake-
+
+      - name: Install CMake and NDK
+        run: |
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "cmake;3.22.1" \
+            "ndk;25.2.9519653" \
+            --sdk_root=$ANDROID_HOME 2>/dev/null || true
+
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
+        timeout-minutes: 30
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

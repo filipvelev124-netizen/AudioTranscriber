@@ -24,3 +24,8 @@
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
 -dontwarn kotlinx.coroutines.**
+
+# whisper.cpp JNI bridge — native methods must not be renamed
+-keepclassmembers class com.audiotranscriber.WhisperEngine {
+    private native *;
+}

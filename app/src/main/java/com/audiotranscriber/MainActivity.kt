@@ -1,200 +1,273 @@
 package com.audiotranscriber
 
 import android.Manifest
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.inputmethod.InputMethodManager
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private lateinit var btnSettings: Button
-    private lateinit var btnHistory: Button
-    private lateinit var btnLanguage: Button
-    private lateinit var layoutHfToken: LinearLayout
-    private lateinit var etHfToken: EditText
-    private lateinit var btnSaveToken: Button
-    private lateinit var tvTokenStatus: TextView
-    private lateinit var tvModelStatus: TextView
-    private lateinit var tvPermissionsStatus: TextView
-    private lateinit var tvServiceStatus: TextView
-    private lateinit var tvNotifAccessStatus: TextView
-    private lateinit var tvRestrictedHint: TextView
-    private lateinit var btnDownloadModel: Button
-    private lateinit var btnPermissions: Button
-    private lateinit var btnService: Button
-    private lateinit var btnNotifAccess: Button
-    private lateinit var btnAppSettings: Button
-    private lateinit var progressBar: ProgressBar
-    private lateinit var tvProgress: TextView
+    private lateinit var fabMic: FloatingActionButton
+    private lateinit var vPulseRing: View
+    private lateinit var vPulseRing2: View
+    private lateinit var tvWaveformStatus: TextView
+    private lateinit var llWaveformBars: LinearLayout
+    private lateinit var cardSetupStatus: MaterialCardView
+    private lateinit var tvSetupTitle: TextView
+    private lateinit var tvSetupMessage: TextView
+    private lateinit var btnSetupAction: Button
+    private lateinit var chipLanguage: Chip
+    private lateinit var chipMode: Chip
+    private lateinit var rvRecentTranscripts: RecyclerView
+    private lateinit var tvNoRecents: TextView
+    private lateinit var btnViewAll: Button
+    private lateinit var bottomNav: BottomNavigationView
+    private lateinit var tvModeChip: TextView
+
+    private var pulseAnimator: AnimatorSet? = null
+    private val waveformAnimators = mutableListOf<ValueAnimator>()
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ -> refreshStatus() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        btnSettings         = findViewById(R.id.btnSettings)
-        btnHistory          = findViewById(R.id.btnHistory)
-        btnLanguage         = findViewById(R.id.btnLanguage)
-        layoutHfToken       = findViewById(R.id.layoutHfToken)
-        etHfToken           = findViewById(R.id.etHfToken)
-        btnSaveToken        = findViewById(R.id.btnSaveToken)
-        tvTokenStatus       = findViewById(R.id.tvTokenStatus)
-        tvModelStatus       = findViewById(R.id.tvModelStatus)
-        tvPermissionsStatus = findViewById(R.id.tvPermissionsStatus)
-        tvServiceStatus     = findViewById(R.id.tvServiceStatus)
-        tvNotifAccessStatus = findViewById(R.id.tvNotifAccessStatus)
-        tvRestrictedHint    = findViewById(R.id.tvRestrictedHint)
-        btnDownloadModel    = findViewById(R.id.btnDownloadModel)
-        btnPermissions      = findViewById(R.id.btnPermissions)
-        btnService          = findViewById(R.id.btnService)
-        btnNotifAccess      = findViewById(R.id.btnNotifAccess)
-        btnAppSettings      = findViewById(R.id.btnAppSettings)
-        progressBar         = findViewById(R.id.progressBar)
-        tvProgress          = findViewById(R.id.tvProgress)
+        fabMic           = findViewById(R.id.fabMic)
+        vPulseRing       = findViewById(R.id.vPulseRing)
+        vPulseRing2      = findViewById(R.id.vPulseRing2)
+        tvWaveformStatus = findViewById(R.id.tvWaveformStatus)
+        llWaveformBars   = findViewById(R.id.llWaveformBars)
+        cardSetupStatus  = findViewById(R.id.cardSetupStatus)
+        tvSetupTitle     = findViewById(R.id.tvSetupTitle)
+        tvSetupMessage   = findViewById(R.id.tvSetupMessage)
+        btnSetupAction   = findViewById(R.id.btnSetupAction)
+        chipLanguage     = findViewById(R.id.chipLanguage)
+        chipMode         = findViewById(R.id.chipMode)
+        rvRecentTranscripts = findViewById(R.id.rvRecentTranscripts)
+        tvNoRecents      = findViewById(R.id.tvNoRecents)
+        btnViewAll       = findViewById(R.id.btnViewAll)
+        bottomNav        = findViewById(R.id.bottomNav)
+        tvModeChip       = findViewById(R.id.tvModeChip)
 
-        btnSettings.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
-        btnHistory.setOnClickListener  { startActivity(Intent(this, HistoryActivity::class.java)) }
-        btnLanguage.setOnClickListener { showLanguagePicker() }
-        btnSaveToken.setOnClickListener {
-            val token = etHfToken.text.toString().trim()
-            AppPrefs.setHfToken(this, token)
-            tvTokenStatus.text = if (token.isNotEmpty()) "✅ Token saved" else "⚠️ Token cleared"
-            // hide keyboard
-            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
-                .hideSoftInputFromWindow(etHfToken.windowToken, 0)
-        }
-        btnDownloadModel.setOnClickListener { downloadModel() }
-        btnPermissions.setOnClickListener { requestMissingPermissions() }
-        btnService.setOnClickListener { toggleService() }
-        btnNotifAccess.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        }
-        btnAppSettings.setOnClickListener {
-            // Opens the app's own settings page where the user can tap ⋮ →
-            // "Allow restricted settings" to unlock notification access on Android 13+
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.parse("package:$packageName")
-            })
-        }
+        setupWaveformBars()
+        setupBottomNav()
+        fabMic.setOnClickListener { toggleCapture() }
+        chipLanguage.setOnClickListener { showLanguagePicker() }
+        chipMode.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        btnViewAll.setOnClickListener { startActivity(Intent(this, HistoryActivity::class.java)) }
 
-        updateLanguageButton()
-        updateTokenPanel()
         requestMissingPermissions()
-        if (AppPrefs.getHfToken(this).isBlank()) showFirstRunPrompt()
     }
 
     override fun onResume() {
         super.onResume()
+        updateChips()
         refreshStatus()
+        loadRecentTranscripts()
+        syncRecordingUi()
     }
 
     override fun onDestroy() {
+        stopPulse()
+        stopWaveformAnimation()
         scope.cancel()
         super.onDestroy()
     }
 
-    // ── Language picker ───────────────────────────────────────────────────────
+    // ── Bottom nav ──────────────────────────────────────────────────────────
 
-    private fun updateLanguageButton() {
-        btnLanguage.text = Language.getSelected(this).displayName
-    }
-
-    private fun updateTokenPanel() {
-        val lang      = Language.getSelected(this)
-        val showPanel = lang.isOnline || AppPrefs.isUseCloud(this)
-        layoutHfToken.isVisible = showPanel
-        if (showPanel) {
-            val saved = AppPrefs.getHfToken(this)
-            if (saved.isNotEmpty()) {
-                etHfToken.setText(saved)
-                tvTokenStatus.text = "✅ Token saved"
-            } else {
-                tvTokenStatus.text = ""
+    private fun setupBottomNav() {
+        bottomNav.selectedItemId = R.id.nav_transcribe
+        bottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_history -> {
+                    startActivity(Intent(this, HistoryActivity::class.java))
+                    false
+                }
+                R.id.nav_settings -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                    false
+                }
+                else -> true
             }
         }
     }
 
-    private fun showFirstRunPrompt() {
-        AlertDialog.Builder(this)
-            .setTitle("One quick setup step")
-            .setMessage(
-                "Audio Transcriber uses the free Whisper cloud API — no large downloads needed.\n\n" +
-                "You need a free Hugging Face token:\n" +
-                "1. Go to huggingface.co → sign up free\n" +
-                "2. Settings → Access Tokens → New token (Read)\n" +
-                "3. Paste it in the field on this screen\n\n" +
-                "Takes about 1 minute. Tap 'Open HuggingFace' to do it now."
-            )
-            .setPositiveButton("Got it", null)
-            .setNeutralButton("Open HuggingFace") { _, _ ->
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://huggingface.co/settings/tokens")))
-            }
-            .show()
-    }
+    // ── Waveform bars ────────────────────────────────────────────────────────
 
-    private fun showLanguagePicker() {
-        val languages = Language.values()
-        val names = languages.map { lang ->
-            val downloaded = ModelDownloader.isDownloaded(this, lang)
-            if (downloaded) "✅ ${lang.displayName}" else lang.displayName
-        }.toTypedArray()
-        val currentIndex = languages.indexOf(Language.getSelected(this)).coerceAtLeast(0)
+    private val idleBarHeightsDp = intArrayOf(18, 32, 48, 56, 42, 52, 38, 28, 46, 22)
 
-        AlertDialog.Builder(this)
-            .setTitle("Select language")
-            .setSingleChoiceItems(names, currentIndex) { dialog, which ->
-                val chosen = languages[which]
-                val prev   = Language.getSelected(this)
-                Language.setSelected(this, chosen)
-                updateLanguageButton()
-                updateTokenPanel()
-                if (chosen != prev) {
-                    // Unload the in-memory model so the correct language is loaded next time
-                    LocalTranscriber.reset()
+    private fun setupWaveformBars() {
+        val density = resources.displayMetrics.density
+        idleBarHeightsDp.forEach { h ->
+            val bar = View(this).apply {
+                background = ContextCompat.getDrawable(this@MainActivity, R.drawable.bg_waveform_bar)
+                layoutParams = LinearLayout.LayoutParams(
+                    (3 * density).toInt(),
+                    (h * density).toInt()
+                ).apply {
+                    marginStart = (3 * density).toInt()
+                    marginEnd = (3 * density).toInt()
                 }
-                refreshStatus()
-                dialog.dismiss()
             }
-            .show()
+            llWaveformBars.addView(bar)
+        }
     }
 
-    // ── Service toggle ────────────────────────────────────────────────────────
+    private fun startWaveformAnimation() {
+        stopWaveformAnimation()
+        val density = resources.displayMetrics.density
+        for (i in 0 until llWaveformBars.childCount) {
+            val bar = llWaveformBars.getChildAt(i)
+            val maxH = ((16 + (i % 5) * 10 + 28) * density).toInt()
+            val minH = (6 * density).toInt()
+            val anim = ValueAnimator.ofInt(bar.layoutParams.height, maxH, minH).apply {
+                duration = 500L + i * 70L
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+                interpolator = AccelerateDecelerateInterpolator()
+                startDelay = i * 50L
+                addUpdateListener { animator ->
+                    val lp = bar.layoutParams
+                    lp.height = animator.animatedValue as Int
+                    bar.layoutParams = lp
+                }
+            }
+            anim.start()
+            waveformAnimators.add(anim)
+        }
+    }
 
-    private fun toggleService() {
-        if (AudioCaptureService.isRunning) {
-            sendServiceIntent(AudioCaptureService.ACTION_STOP_SERVICE)
+    private fun stopWaveformAnimation() {
+        waveformAnimators.forEach { it.cancel() }
+        waveformAnimators.clear()
+        val density = resources.displayMetrics.density
+        for (i in 0 until llWaveformBars.childCount) {
+            val bar = llWaveformBars.getChildAt(i)
+            val lp = bar.layoutParams
+            lp.height = (idleBarHeightsDp.getOrElse(i) { 30 } * density).toInt()
+            bar.layoutParams = lp
+        }
+    }
+
+    // ── Pulse animation ──────────────────────────────────────────────────────
+
+    private fun startPulse() {
+        pulseAnimator?.cancel()
+        val ring1 = ObjectAnimator.ofPropertyValuesHolder(
+            vPulseRing,
+            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.45f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.45f),
+            PropertyValuesHolder.ofFloat(View.ALPHA, 0.55f, 0f)
+        ).apply {
+            duration = 1100
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.RESTART
+        }
+        val ring2 = ObjectAnimator.ofPropertyValuesHolder(
+            vPulseRing2,
+            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.3f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.3f),
+            PropertyValuesHolder.ofFloat(View.ALPHA, 0.4f, 0f)
+        ).apply {
+            duration = 1100
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.RESTART
+            startDelay = 350
+        }
+        pulseAnimator = AnimatorSet().also { set ->
+            set.playTogether(ring1, ring2)
+            set.start()
+        }
+    }
+
+    private fun stopPulse() {
+        pulseAnimator?.cancel()
+        pulseAnimator = null
+        vPulseRing.alpha = 0f
+        vPulseRing2.alpha = 0f
+    }
+
+    // ── Recording state ──────────────────────────────────────────────────────
+
+    private fun toggleCapture() {
+        if (AudioCaptureService.isRecording) {
+            sendServiceIntent(AudioCaptureService.ACTION_STOP_CAPTURE)
+            setRecordingUi(false)
         } else {
-            // Start in idle state (no action = onCreate → idle notification, no recording)
+            ensureServiceRunning()
+            sendServiceIntent(AudioCaptureService.ACTION_START_CAPTURE)
+            setRecordingUi(true)
+        }
+    }
+
+    private fun setRecordingUi(recording: Boolean) {
+        if (recording) {
+            fabMic.setImageResource(R.drawable.ic_stop_24)
+            tvWaveformStatus.text = "Listening…"
+            startPulse()
+            startWaveformAnimation()
+        } else {
+            fabMic.setImageResource(R.drawable.ic_mic)
+            tvWaveformStatus.text = "Ready to transcribe"
+            stopPulse()
+            stopWaveformAnimation()
+        }
+    }
+
+    private fun syncRecordingUi() {
+        setRecordingUi(AudioCaptureService.isRecording)
+    }
+
+    private fun ensureServiceRunning() {
+        if (!AudioCaptureService.isRunning) {
             val intent = Intent(this, AudioCaptureService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
             else startService(intent)
         }
-        btnService.postDelayed({ refreshStatus() }, 400)
     }
 
     private fun sendServiceIntent(action: String) {
@@ -205,6 +278,43 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Throwable) {}
     }
 
+    // ── Chips ────────────────────────────────────────────────────────────────
+
+    private fun updateChips() {
+        val lang = Language.getSelected(this)
+        chipLanguage.text = lang.displayName
+        val useCloud = AppPrefs.isUseCloud(this)
+        val modeLabel = if (useCloud) "Cloud" else "Offline"
+        chipMode.text = modeLabel
+        tvModeChip.text = modeLabel
+    }
+
+    // ── Language picker ───────────────────────────────────────────────────────
+
+    private fun showLanguagePicker() {
+        val languages = Language.values()
+        val names = languages.map { lang ->
+            if (ModelDownloader.isDownloaded(this, lang)) "✅ ${lang.displayName}"
+            else lang.displayName
+        }.toTypedArray()
+        val currentIndex = languages.indexOf(Language.getSelected(this)).coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle("Select language")
+            .setSingleChoiceItems(names, currentIndex) { dialog, which ->
+                val chosen = languages[which]
+                val prev = Language.getSelected(this)
+                Language.setSelected(this, chosen)
+                if (chosen != prev) LocalTranscriber.reset()
+                updateChips()
+                refreshStatus()
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    // ── Permissions ───────────────────────────────────────────────────────────
+
     private fun requestMissingPermissions() {
         val needed = mutableListOf<String>()
         if (!hasMicPermission()) needed.add(Manifest.permission.RECORD_AUDIO)
@@ -213,91 +323,6 @@ class MainActivity : AppCompatActivity() {
         }
         if (needed.isNotEmpty()) permissionLauncher.launch(needed.toTypedArray())
     }
-
-    // ── Status ────────────────────────────────────────────────────────────────
-
-    private fun refreshStatus() {
-        val lang = Language.getSelected(this)
-
-        // Step 1: model
-        val useCloud = lang.isOnline || AppPrefs.isUseCloud(this)
-        if (useCloud) {
-            val hasToken = AppPrefs.getHfToken(this).isNotBlank()
-            tvModelStatus.text = if (hasToken)
-                "Speech model: 🌐 Whisper cloud — ready"
-            else
-                "Speech model: ⚠️ Whisper cloud — paste your HF token above"
-            btnDownloadModel.isEnabled = false
-            btnDownloadModel.text = "No download needed"
-        } else if (ModelDownloader.isDownloaded(this, lang)) {
-            tvModelStatus.text = "Speech model: ✅ Downloaded (${lang.displayName})"
-            btnDownloadModel.isEnabled = true
-            btnDownloadModel.text = "Re-download model"
-        } else {
-            tvModelStatus.text = "Speech model: ❌ Not downloaded"
-            btnDownloadModel.isEnabled = true
-            btnDownloadModel.text = "Download ${lang.displayName} model (~45 MB)"
-        }
-
-        // Step 2: permissions
-        val micOk   = hasMicPermission()
-        val notifOk = hasNotificationPermission()
-        when {
-            micOk && notifOk -> {
-                tvPermissionsStatus.text = "Permissions: ✅ All granted"
-                btnPermissions.isEnabled = false
-                btnPermissions.text = "Permissions granted"
-            }
-            micOk -> {
-                tvPermissionsStatus.text = "Permissions: ⚠️ Notifications not granted"
-                btnPermissions.isEnabled = true
-                btnPermissions.text = "Grant notification permission"
-            }
-            else -> {
-                tvPermissionsStatus.text = "Permissions: ❌ Microphone not granted"
-                btnPermissions.isEnabled = true
-                btnPermissions.text = "Grant permissions"
-            }
-        }
-
-        // Step 3: service
-        if (AudioCaptureService.isRunning) {
-            tvServiceStatus.text = if (AudioCaptureService.isRecording)
-                "Service: 🔴 Recording…"
-            else
-                "Service: ✅ Running (use notification to transcribe)"
-            btnService.text = "Stop service"
-        } else {
-            tvServiceStatus.text = "Service: ❌ Not running"
-            btnService.text = "Start service"
-        }
-
-        // Step 4: notification access
-        if (isNotificationAccessGranted()) {
-            tvNotifAccessStatus.text = "Notification access: ✅ Granted — auto-detection active"
-            btnNotifAccess.text = "Manage notification access"
-            tvRestrictedHint.isVisible = false
-            btnAppSettings.isVisible = false
-        } else {
-            tvNotifAccessStatus.text = "Notification access: ❌ Not granted"
-            btnNotifAccess.text = "Enable notification access"
-            // Show restricted-settings hint for Android 13+ sideloaded builds
-            val showHint = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-            tvRestrictedHint.isVisible = showHint
-            btnAppSettings.isVisible = showHint
-        }
-
-        // Pre-load model into memory if using local mode and model is downloaded
-        if (!useCloud && ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady) {
-            LocalTranscriber.initialize(
-                context = this,
-                onReady = { tvModelStatus.text = "Speech model: ✅ Loaded (${lang.displayName})" },
-                onError = { e -> tvModelStatus.text = "Speech model: ⚠️ $e" }
-            )
-        }
-    }
-
-    // ── Permission helpers ────────────────────────────────────────────────────
 
     private fun hasMicPermission() =
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
@@ -309,48 +334,161 @@ class MainActivity : AppCompatActivity() {
                     PackageManager.PERMISSION_GRANTED
         } else true
 
-    private fun isNotificationAccessGranted(): Boolean {
-        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
-            ?: return false
-        return flat.contains(packageName)
+    // ── Status / setup card ───────────────────────────────────────────────────
+
+    private data class SetupIssue(
+        val title: String,
+        val message: String,
+        val actionLabel: String,
+        val actionType: String
+    )
+
+    private fun getSetupIssue(): SetupIssue? {
+        val useCloud = AppPrefs.isUseCloud(this)
+        if (useCloud && AppPrefs.getHfToken(this).isBlank()) {
+            return SetupIssue(
+                "Token required",
+                "Paste your Hugging Face API token in Settings to enable cloud transcription.",
+                "Open Settings", "settings"
+            )
+        }
+        if (!useCloud && !WhisperEngine.isModelDownloaded(this) &&
+            !ModelDownloader.isDownloaded(this, Language.getSelected(this))
+        ) {
+            return SetupIssue(
+                "Model needed",
+                "Download the Whisper model (~75 MB) for offline transcription in all languages.",
+                "Download", "download"
+            )
+        }
+        if (!hasMicPermission()) {
+            return SetupIssue(
+                "Permission needed",
+                "Microphone permission is required to transcribe audio.",
+                "Grant", "permission"
+            )
+        }
+        return null
+    }
+
+    private fun refreshStatus() {
+        val issue = getSetupIssue()
+        if (issue == null) {
+            cardSetupStatus.isVisible = false
+            ensureServiceRunning()
+        } else {
+            cardSetupStatus.isVisible = true
+            tvSetupTitle.text = issue.title
+            tvSetupMessage.text = issue.message
+            btnSetupAction.text = issue.actionLabel
+            btnSetupAction.isEnabled = true
+            btnSetupAction.setOnClickListener { handleSetupAction(issue.actionType) }
+        }
+
+        val useCloud = AppPrefs.isUseCloud(this)
+        if (!useCloud && WhisperEngine.isModelDownloaded(this) && !WhisperEngine.isReady) {
+            WhisperEngine.initialize(this, onReady = {}, onError = {})
+        }
+        val lang = Language.getSelected(this)
+        if (!useCloud && !WhisperEngine.isModelDownloaded(this) && !lang.isOnline &&
+            ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady
+        ) {
+            LocalTranscriber.initialize(this, onReady = {}, onError = {})
+        }
+    }
+
+    private fun handleSetupAction(actionType: String) {
+        when (actionType) {
+            "settings"   -> startActivity(Intent(this, SettingsActivity::class.java))
+            "download"   -> downloadModel()
+            "permission" -> requestMissingPermissions()
+        }
     }
 
     // ── Model download ────────────────────────────────────────────────────────
 
     private fun downloadModel() {
-        btnDownloadModel.isEnabled = false
-        progressBar.isVisible = true
-        tvProgress.isVisible = true
-
-        val language = Language.getSelected(this)
+        cardSetupStatus.isVisible = true
+        tvSetupTitle.text = "Downloading model…"
+        tvSetupMessage.text = "Starting download…"
+        btnSetupAction.isEnabled = false
 
         scope.launch {
-            ModelDownloader.download(
-                context  = this@MainActivity,
-                language = language,
+            ModelDownloader.downloadWhisperModel(
+                context = this@MainActivity,
                 onProgress = { pct ->
-                    when (pct) {
-                        -1 -> { progressBar.isIndeterminate = true; tvProgress.text = "Extracting…" }
-                        else -> {
-                            progressBar.isIndeterminate = false
-                            progressBar.progress = pct
-                            tvProgress.text = "Downloading…  $pct%"
-                        }
-                    }
+                    tvSetupMessage.text = "Downloading Whisper model… $pct%"
                 },
                 onComplete = {
-                    progressBar.isVisible = false
-                    tvProgress.isVisible = false
-                    btnDownloadModel.isEnabled = true
+                    btnSetupAction.isEnabled = true
                     refreshStatus()
                 },
                 onError = { err ->
-                    progressBar.isVisible = false
-                    tvProgress.text = "❌ $err"
-                    tvProgress.isVisible = true
-                    btnDownloadModel.isEnabled = true
+                    tvSetupTitle.text = "Download failed"
+                    tvSetupMessage.text = err
+                    btnSetupAction.isEnabled = true
+                    btnSetupAction.text = "Retry"
+                    btnSetupAction.setOnClickListener { downloadModel() }
                 }
             )
+        }
+    }
+
+    // ── Recent transcripts ────────────────────────────────────────────────────
+
+    private fun loadRecentTranscripts() {
+        scope.launch {
+            val recent = withContext(Dispatchers.IO) {
+                AppDatabase.get(this@MainActivity).transcriptDao().getAll().take(5)
+            }
+            if (recent.isEmpty()) {
+                tvNoRecents.isVisible = true
+                rvRecentTranscripts.isVisible = false
+            } else {
+                tvNoRecents.isVisible = false
+                rvRecentTranscripts.isVisible = true
+                rvRecentTranscripts.layoutManager =
+                    LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false)
+                rvRecentTranscripts.adapter = RecentAdapter(recent)
+            }
+        }
+    }
+
+    inner class RecentAdapter(private val items: List<Transcript>) :
+        RecyclerView.Adapter<RecentAdapter.VH>() {
+
+        inner class VH(view: View) : RecyclerView.ViewHolder(view) {
+            val tvLanguage: TextView = view.findViewById(R.id.tvLanguage)
+            val tvTimestamp: TextView = view.findViewById(R.id.tvTimestamp)
+            val tvText: TextView = view.findViewById(R.id.tvText)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
+            VH(LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_recent_transcript, parent, false))
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val item = items[position]
+            holder.tvLanguage.text = item.languageName
+            holder.tvText.text = item.text
+            holder.tvTimestamp.text = relativeTime(item.timestamp)
+            holder.itemView.setOnClickListener {
+                val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("transcript", item.text))
+                Toast.makeText(this@MainActivity, "Copied", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        override fun getItemCount() = items.size
+    }
+
+    private fun relativeTime(ts: Long): String {
+        val diff = System.currentTimeMillis() - ts
+        return when {
+            diff < 60_000L       -> "Just now"
+            diff < 3_600_000L    -> "${diff / 60_000}m ago"
+            diff < 86_400_000L   -> "${diff / 3_600_000}h ago"
+            else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(ts))
         }
     }
 }

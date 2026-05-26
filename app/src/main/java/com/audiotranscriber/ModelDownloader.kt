@@ -11,6 +11,71 @@ import java.util.zip.ZipInputStream
 
 object ModelDownloader {
 
+    // ── Whisper GGML model (single file, covers all languages) ────────────────
+
+    fun isWhisperModelDownloaded(context: Context): Boolean =
+        WhisperEngine.isModelDownloaded(context)
+
+    suspend fun downloadWhisperModel(
+        context: Context,
+        onProgress: (Int) -> Unit,
+        onComplete: () -> Unit,
+        onError: (String) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val destFile = WhisperEngine.modelFile(context)
+        val tempFile = File(context.filesDir, "ggml-tiny.bin.tmp")
+        try {
+            tempFile.delete()
+            val client = OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.MINUTES)
+                .build()
+
+            val response = client.newCall(
+                Request.Builder().url(WhisperEngine.MODEL_URL).build()
+            ).execute()
+
+            if (!response.isSuccessful) {
+                response.close()
+                withContext(Dispatchers.Main) {
+                    onError("Download failed (HTTP ${response.code}). Check your internet connection.")
+                }
+                return@withContext
+            }
+
+            val body = response.body ?: run {
+                withContext(Dispatchers.Main) { onError("Empty response body") }
+                return@withContext
+            }
+
+            val contentLength = body.contentLength()
+            body.byteStream().use { input ->
+                tempFile.outputStream().use { output ->
+                    val buffer = ByteArray(65_536)
+                    var downloaded = 0L
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        downloaded += bytesRead
+                        if (contentLength > 0) {
+                            val pct = (downloaded * 100 / contentLength).toInt()
+                            withContext(Dispatchers.Main) { onProgress(pct) }
+                        }
+                    }
+                }
+            }
+
+            tempFile.renameTo(destFile)
+            withContext(Dispatchers.Main) { onComplete() }
+
+        } catch (e: Throwable) {
+            try { tempFile.delete() } catch (_: Throwable) {}
+            withContext(Dispatchers.Main) { onError(e.message ?: "Unknown error") }
+        }
+    }
+
+    // ── Vosk models (per-language zip, legacy offline mode) ──────────────────
+
     // Each language gets its own subdirectory so switching languages never
     // requires re-downloading a model that was already saved.
     fun modelDir(context: Context, language: Language = Language.getSelected(context)) =

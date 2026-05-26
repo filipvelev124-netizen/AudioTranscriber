@@ -1,9 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#1565C0</color>
-    <color name="primaryDark">#0D47A1</color>
-    <color name="accent">#42A5F5</color>
-    <color name="background">#FAFAFA</color>
-    <color name="textPrimary">#212121</color>
-    <color name="textSecondary">#757575</color>
+    <!-- Background -->
+    <color name="background">#13131b</color>
+
+    <!-- Surface ramp -->
+    <color name="surface">#13131b</color>
+    <color name="surface_container_lowest">#0d0d15</color>
+    <color name="surface_container_low">#1b1b23</color>
+    <color name="surface_container">#1f1f27</color>
+    <color name="surface_container_high">#292932</color>
+    <color name="surface_container_highest">#34343d</color>
+    <color name="surface_variant">#34343d</color>
+    <color name="surface_bright">#393841</color>
+
+    <!-- Primary (lavender) -->
+    <color name="primary">#c0c1ff</color>
+    <color name="primary_container">#8083ff</color>
+    <color name="primary_fixed">#e1e0ff</color>
+    <color name="primary_fixed_dim">#c0c1ff</color>
+    <color name="inverse_primary">#494bd6</color>
+    <color name="on_primary">#1000a9</color>
+    <color name="on_primary_container">#0d0096</color>
+
+    <!-- Secondary (sky blue) -->
+    <color name="secondary">#7bd0ff</color>
+    <color name="secondary_container">#00a6e0</color>
+    <color name="on_secondary">#00354a</color>
+    <color name="on_secondary_container">#00374d</color>
+
+    <!-- Tertiary (amber/orange) -->
+    <color name="tertiary">#ffb783</color>
+    <color name="tertiary_container">#d97721</color>
+    <color name="on_tertiary">#4f2500</color>
+    <color name="on_tertiary_container">#452000</color>
+
+    <!-- Error -->
+    <color name="error">#ffb4ab</color>
+    <color name="error_container">#93000a</color>
+    <color name="on_error">#690005</color>
+    <color name="on_error_container">#ffdad6</color>
+
+    <!-- On-surface -->
+    <color name="on_surface">#e4e1ed</color>
+    <color name="on_surface_variant">#c7c4d7</color>
+    <color name="on_background">#e4e1ed</color>
+
+    <!-- Outline -->
+    <color name="outline">#908fa0</color>
+    <color name="outline_variant">#464554</color>
+
+    <!-- Inverse -->
+    <color name="inverse_surface">#e4e1ed</color>
+    <color name="inverse_on_surface">#303038</color>
+
+    <!-- Legacy aliases (used by settings/history layouts) -->
+    <color name="textPrimary">#e4e1ed</color>
+    <color name="textSecondary">#c7c4d7</color>
+    <color name="primaryDark">#0d0096</color>
+    <color name="accent">#7bd0ff</color>
 </resources>

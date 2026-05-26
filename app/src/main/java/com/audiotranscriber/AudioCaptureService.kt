@@ -54,6 +54,7 @@ class AudioCaptureService : Service() {
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
     private var stopCloudCapture: (() -> Unit)? = null
+    private var stopWhisperCapture: (() -> Unit)? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var lastResult = ""
@@ -123,13 +124,27 @@ class AudioCaptureService : Service() {
         releaseAudioRecord()
         try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
         stopCloudCapture = null
+        try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
+        stopWhisperCapture = null
 
         val language  = Language.getSelected(this)
         val threshold = AppPrefs.getSilenceThreshold(this)
 
-        // Cloud path: Bulgarian always uses cloud; other languages if "Use cloud" is on
-        if (language.isOnline || AppPrefs.isUseCloud(this)) {
+        // Cloud path
+        if (AppPrefs.isUseCloud(this)) {
             startCloudCapture(language, threshold)
+            return
+        }
+
+        // Whisper offline path — one model covers all languages including Bulgarian
+        if (WhisperEngine.isModelDownloaded(this)) {
+            startWhisperCapture(language, threshold)
+            return
+        }
+
+        // Bulgarian has no Vosk model; user needs Whisper or cloud
+        if (language.isOnline) {
+            notify(buildIdleNotification("⚠️ Enable cloud (⚙) or download Whisper model for ${language.displayName}"))
             return
         }
 
@@ -276,6 +291,40 @@ class AudioCaptureService : Service() {
         transcriber.start()
     }
 
+    private fun startWhisperCapture(language: Language, threshold: Double) {
+        if (!WhisperEngine.isReady) {
+            notify(buildIdleNotification("⏳ Loading Whisper model (first time, ~5 sec)…"))
+            WhisperEngine.initialize(
+                context = this,
+                onReady = { try { startCapture() } catch (_: Throwable) {} },
+                onError = { e -> try { notify(buildIdleNotification("❌ $e")) } catch (_: Throwable) {} }
+            )
+            return
+        }
+
+        isRecording = true
+        notify(buildRecordingNotification("▶ Play the voice message now…"))
+
+        val transcriber = WhisperLocalTranscriber(
+            context          = this,
+            language         = language,
+            silenceThreshold = threshold,
+            onPartial = { partial -> try { notify(buildRecordingNotification(partial)) } catch (_: Throwable) {} },
+            onResult  = { text ->
+                isRecording = false
+                stopWhisperCapture = null
+                onTranscriptionComplete(text, language)
+            },
+            onError   = { msg ->
+                isRecording = false
+                stopWhisperCapture = null
+                try { notify(buildIdleNotification(msg)) } catch (_: Throwable) {}
+            }
+        )
+        stopWhisperCapture = { transcriber.stop() }
+        transcriber.start()
+    }
+
     // Called on the main thread after every successful transcription
     private fun onTranscriptionComplete(result: String, language: Language) {
         if (result.isEmpty()) {
@@ -307,6 +356,8 @@ class AudioCaptureService : Service() {
         releaseAudioRecord()
         try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
         stopCloudCapture = null
+        try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
+        stopWhisperCapture = null
         try { notify(buildIdleNotification()) } catch (_: Throwable) {}
     }
 
@@ -350,6 +401,8 @@ class AudioCaptureService : Service() {
         try { releaseAudioRecord() } catch (_: Throwable) {}
         try { stopCloudCapture?.invoke() } catch (_: Throwable) {}
         stopCloudCapture = null
+        try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
+        stopWhisperCapture = null
         if (copyReceiverRegistered) try { unregisterReceiver(copyReceiver) } catch (_: Throwable) {}
         super.onDestroy()
     }

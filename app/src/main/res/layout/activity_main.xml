@@ -1,324 +1,285 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background">
 
+    <!-- Top bar -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="24dp">
-
-        <!-- Header row -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Audio Transcriber"
-                android:textSize="26sp"
-                android:textStyle="bold"
-                android:textColor="@color/primary" />
-
-            <Button
-                android:id="@+id/btnHistory"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📋"
-                android:contentDescription="History"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:minWidth="0dp"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
-                android:layout_marginStart="6dp" />
-
-            <Button
-                android:id="@+id/btnSettings"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚙"
-                android:contentDescription="Settings"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:minWidth="0dp"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
-                android:layout_marginStart="6dp" />
-
-        </LinearLayout>
+        android:id="@+id/topBar"
+        android:layout_width="0dp"
+        android:layout_height="64dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:background="@color/background"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Transcribe voice messages in any app — free Whisper cloud, no downloads needed."
-            android:textSize="14sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="24dp" />
-
-        <!-- ── Language selector ── -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Language"
-            android:textSize="16sp"
+            android:layout_weight="1"
+            android:text="ScribePro"
+            android:textSize="22sp"
             android:textStyle="bold"
-            android:textColor="@color/textPrimary"
-            android:layout_marginBottom="6dp" />
+            android:textColor="@color/primary" />
 
-        <Button
-            android:id="@+id/btnLanguage"
+        <TextView
+            android:id="@+id/tvModeChip"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="English"
-            android:layout_marginBottom="12dp" />
+            android:text="Cloud"
+            android:textSize="11sp"
+            android:textColor="@color/primary"
+            android:background="@drawable/bg_badge"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp" />
+    </LinearLayout>
 
-        <!-- Shown only when an online language (Bulgarian) is selected -->
+    <!-- Bottom navigation -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNav"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:menu="@menu/bottom_nav_menu"
+        android:background="@color/surface_container_low"
+        app:itemIconTint="@color/nav_item_color"
+        app:itemTextColor="@color/nav_item_color"
+        app:activeIndicatorColor="@color/primary_container"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Scrollable main content -->
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        app:layout_constraintTop_toBottomOf="@+id/topBar"
+        app:layout_constraintBottom_toTopOf="@+id/bottomNav"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
         <LinearLayout
-            android:id="@+id/layoutHfToken"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:visibility="gone"
-            android:layout_marginBottom="16dp">
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="24dp">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Waveform panel -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🔑 Hugging Face API token (free)"
+                android:layout_marginBottom="16dp"
+                app:cardBackgroundColor="@color/surface_container"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="#14ffffff"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingTop="20dp"
+                    android:paddingBottom="16dp">
+
+                    <LinearLayout
+                        android:id="@+id/llWaveformBars"
+                        android:layout_width="match_parent"
+                        android:layout_height="64dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical|center_horizontal"
+                        android:layout_marginBottom="10dp" />
+
+                    <TextView
+                        android:id="@+id/tvWaveformStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Ready to transcribe"
+                        android:textSize="13sp"
+                        android:textColor="@color/on_surface_variant"
+                        android:gravity="center" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Mic button with pulse rings -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="160dp"
+                android:layout_marginBottom="16dp">
+
+                <View
+                    android:id="@+id/vPulseRing"
+                    android:layout_width="148dp"
+                    android:layout_height="148dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_pulse_ring"
+                    android:alpha="0" />
+
+                <View
+                    android:id="@+id/vPulseRing2"
+                    android:layout_width="116dp"
+                    android:layout_height="116dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_pulse_ring"
+                    android:alpha="0" />
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/fabMic"
+                    android:layout_width="84dp"
+                    android:layout_height="84dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_mic"
+                    android:contentDescription="Start transcription"
+                    app:backgroundTint="@color/inverse_primary"
+                    app:tint="@color/primary_fixed"
+                    app:shapeAppearanceOverlay="@style/ShapeAppearance.FullCircle"
+                    app:fabSize="auto"
+                    app:maxImageSize="36dp" />
+            </FrameLayout>
+
+            <!-- Language + Mode chips -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipLanguage"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="English"
+                    android:textColor="@color/on_surface"
+                    app:chipBackgroundColor="@color/surface_container"
+                    app:chipStrokeColor="@color/outline_variant"
+                    app:chipStrokeWidth="1dp"
+                    app:chipIconVisible="false"
+                    app:checkedIconVisible="false" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipMode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="Cloud"
+                    android:textColor="@color/primary"
+                    app:chipBackgroundColor="@color/primary_container"
+                    app:chipStrokeWidth="0dp"
+                    app:chipIconVisible="false"
+                    app:checkedIconVisible="false" />
+
+            </LinearLayout>
+
+            <!-- Setup issue card (hidden when everything is set up) -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardSetupStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:visibility="gone"
+                app:cardBackgroundColor="@color/surface_container"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/primary"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/tvSetupTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/on_surface"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvSetupMessage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textColor="@color/on_surface_variant"
+                        android:layout_marginBottom="12dp" />
+
+                    <Button
+                        android:id="@+id/btnSetupAction"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Fix"
+                        style="@style/Widget.Material3.Button.TonalButton" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Recent Activity header -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Recent Activity"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/on_surface" />
+
+                <Button
+                    android:id="@+id/btnViewAll"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="View all"
+                    android:textColor="@color/primary"
+                    style="@style/Widget.Material3.Button.TextButton" />
+            </LinearLayout>
+
+            <!-- No transcripts placeholder -->
+            <TextView
+                android:id="@+id/tvNoRecents"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No transcriptions yet.\nTap the mic button to start."
                 android:textSize="14sp"
-                android:textStyle="bold"
-                android:textColor="@color/textPrimary"
-                android:layout_marginBottom="4dp" />
+                android:textColor="@color/on_surface_variant"
+                android:gravity="center"
+                android:paddingTop="16dp"
+                android:paddingBottom="16dp"
+                android:lineSpacingMultiplier="1.5"
+                android:visibility="visible" />
 
-            <TextView
+            <!-- Horizontal recent transcripts list -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvRecentTranscripts"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="huggingface.co → sign up free → Settings → Access Tokens → New token (Read)"
-                android:textSize="12sp"
-                android:textColor="@color/textSecondary"
-                android:layout_marginBottom="8dp" />
-
-            <EditText
-                android:id="@+id/etHfToken"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="hf_xxxxxxxxxxxxxxxx"
-                android:inputType="textNoSuggestions|textVisiblePassword"
-                android:singleLine="true"
-                android:layout_marginBottom="8dp" />
-
-            <Button
-                android:id="@+id/btnSaveToken"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Save token"
-                android:layout_marginBottom="4dp" />
-
-            <TextView
-                android:id="@+id/tvTokenStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text=""
-                android:textSize="12sp"
-                android:textColor="@color/textSecondary" />
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:visibility="gone" />
 
         </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/textSecondary"
-            android:alpha="0.2"
-            android:layout_marginBottom="20dp" />
-
-        <!-- ── Step 1: Model ── -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Step 1 — Download speech model"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:textColor="@color/textPrimary"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:id="@+id/tvModelStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Speech model: checking…"
-            android:textSize="14sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="8dp" />
-
-        <ProgressBar
-            android:id="@+id/progressBar"
-            style="@android:style/Widget.Material.ProgressBar.Horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100"
-            android:visibility="gone"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:id="@+id/tvProgress"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:textColor="@color/textSecondary"
-            android:visibility="gone"
-            android:layout_marginBottom="8dp" />
-
-        <Button
-            android:id="@+id/btnDownloadModel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Download model  (~45 MB, one-time)"
-            android:layout_marginBottom="28dp" />
-
-        <!-- ── Step 2: Permissions ── -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Step 2 — Grant permissions"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:textColor="@color/textPrimary"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Microphone: to capture audio.\nNotifications (Android 13+): to show the transcript."
-            android:textSize="13sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="6dp" />
-
-        <TextView
-            android:id="@+id/tvPermissionsStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Permissions: checking…"
-            android:textSize="14sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="8dp" />
-
-        <Button
-            android:id="@+id/btnPermissions"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Grant permissions"
-            android:layout_marginBottom="28dp" />
-
-        <!-- ── Step 3: Service ── -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Step 3 — Start the service"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:textColor="@color/textPrimary"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Keeps the transcriber ready in the background. Use the notification to transcribe."
-            android:textSize="13sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="6dp" />
-
-        <TextView
-            android:id="@+id/tvServiceStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Service: checking…"
-            android:textSize="14sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="8dp" />
-
-        <Button
-            android:id="@+id/btnService"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Start service"
-            android:layout_marginBottom="28dp" />
-
-        <!-- ── Step 4: Notification access (optional) ── -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Step 4 — Auto-detect voice messages (optional)"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:textColor="@color/textPrimary"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Watches chat app notifications. When a voice message arrives, a banner appears so you can transcribe it right away."
-            android:textSize="13sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="6dp" />
-
-        <TextView
-            android:id="@+id/tvNotifAccessStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Notification access: checking…"
-            android:textSize="14sp"
-            android:textColor="@color/textSecondary"
-            android:layout_marginBottom="4dp" />
-
-        <!-- Shown only when access is blocked by Restricted Settings (Android 13+ sideloaded) -->
-        <TextView
-            android:id="@+id/tvRestrictedHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="⚠️ Blocked by Restricted Settings? Tap Open App Settings → ⋮ menu → Allow restricted settings. Then come back here."
-            android:textSize="13sp"
-            android:textColor="@color/textSecondary"
-            android:visibility="gone"
-            android:layout_marginBottom="8dp" />
-
-        <Button
-            android:id="@+id/btnAppSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Open App Settings"
-            android:layout_marginBottom="8dp"
-            android:visibility="gone" />
-
-        <Button
-            android:id="@+id/btnNotifAccess"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Enable notification access"
-            android:layout_marginBottom="32dp" />
-
-        <!-- ── How to use ── -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="How to use"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:textColor="@color/textPrimary"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="With auto-detect (Step 4 enabled):\n1. Receive a voice message in WhatsApp, Telegram, etc.\n2. A banner appears — tap 🎙 Transcribe.\n3. Immediately play the voice message.\n4. The transcript is copied automatically.\n\nManually (without Step 4):\n1. Pull down the notification shade.\n2. Tap 🎙 Transcribe in the Audio Transcriber notification.\n3. Immediately play the voice message.\n4. The transcript is copied automatically.\n\nCloud mode (default): audio is sent to the free Whisper API — accurate, no downloads.\nOffline mode: switch off 'Use Whisper cloud' in ⚙ Settings and download a language model."
-            android:textSize="14sp"
-            android:textColor="@color/textSecondary"
-            android:lineSpacingMultiplier="1.5" />
-
-    </LinearLayout>
-</ScrollView>
+</androidx.constraintlayout.widget.ConstraintLayout>
