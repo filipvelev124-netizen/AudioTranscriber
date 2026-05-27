@@ -35,8 +35,14 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      # Creates / updates a "latest" GitHub Release with the APK attached
-      # Anyone can download it from:  github.com/<you>/AudioTranscriber/releases/latest
+      # Delete old "latest" release + tag so we can recreate it cleanly
+      - name: Delete existing latest release
+        run: gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Creates a fresh "latest" GitHub Release with the APK attached
+      # Download from: github.com/<you>/AudioTranscriber/releases/latest
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
