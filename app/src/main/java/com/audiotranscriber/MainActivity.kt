@@ -292,9 +292,10 @@ class MainActivity : AppCompatActivity() {
         val lang = Language.getSelected(this)
         chipLanguage.text = lang.displayName
         val engineLabel = when {
-            WhisperEngine.isModelDownloaded(this)          -> "Whisper"
-            ModelDownloader.isDownloaded(this, lang)       -> "Vosk"
-            else                                           -> "No model"
+            ModelDownloader.isDownloaded(this, lang) && lang.urls.isNotEmpty() -> "Vosk"
+            WhisperEngine.isModelDownloaded(this)                              -> "Whisper"
+            lang.urls.isNotEmpty()                                             -> "Auto-download"
+            else                                                               -> "No model"
         }
         chipMode.text = engineLabel
         tvModeChip.text = engineLabel
@@ -356,19 +357,19 @@ class MainActivity : AppCompatActivity() {
     )
 
     private fun getSetupIssue(): SetupIssue? {
-        if (!WhisperEngine.isModelDownloaded(this) &&
-            !ModelDownloader.isDownloaded(this, Language.getSelected(this))
-        ) {
+        val lang = Language.getSelected(this)
+        // Bulgarian has no Vosk model — must download Whisper
+        if (lang.urls.isEmpty() && !WhisperEngine.isModelDownloaded(this)) {
             return SetupIssue(
-                "Model needed",
-                "Download the Whisper model (~75 MB) — works offline for all languages including Bulgarian.",
-                "Download", "download"
+                "Whisper model needed",
+                "Bulgarian requires the Whisper model (~75 MB). Download it to transcribe in Bulgarian.",
+                "Download", "download_whisper"
             )
         }
         if (!hasMicPermission()) {
             return SetupIssue(
-                "Permission needed",
-                "Microphone permission is required to transcribe audio.",
+                "Microphone permission needed",
+                "Grant microphone permission so the app can capture audio.",
                 "Grant", "permission"
             )
         }
@@ -402,17 +403,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleSetupAction(actionType: String) {
         when (actionType) {
-            "settings"   -> startActivity(Intent(this, SettingsActivity::class.java))
-            "download"   -> downloadModel()
-            "permission" -> requestMissingPermissions()
+            "settings"         -> startActivity(Intent(this, SettingsActivity::class.java))
+            "download_whisper" -> downloadWhisperModel()
+            "permission"       -> requestMissingPermissions()
         }
     }
 
     // ── Model download ────────────────────────────────────────────────────────
 
-    private fun downloadModel() {
+    private fun downloadWhisperModel() {
         cardSetupStatus.isVisible = true
-        tvSetupTitle.text = "Downloading model…"
+        tvSetupTitle.text = "Downloading Whisper model…"
         tvSetupMessage.text = "Starting download…"
         btnSetupAction.isEnabled = false
 
@@ -431,7 +432,7 @@ class MainActivity : AppCompatActivity() {
                     tvSetupMessage.text = err
                     btnSetupAction.isEnabled = true
                     btnSetupAction.text = "Retry"
-                    btnSetupAction.setOnClickListener { downloadModel() }
+                    btnSetupAction.setOnClickListener { downloadWhisperModel() }
                 }
             )
         }

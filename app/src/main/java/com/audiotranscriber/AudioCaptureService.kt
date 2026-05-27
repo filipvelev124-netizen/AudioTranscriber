@@ -132,25 +132,37 @@ class AudioCaptureService : Service() {
         val language  = Language.getSelected(this)
         val threshold = AppPrefs.getSilenceThreshold(this)
 
-        // Whisper offline path — one model covers all languages including Bulgarian
-        if (WhisperEngine.isModelDownloaded(this)) {
-            startWhisperCapture(language, threshold)
-            return
-        }
-
-        // Language has no Vosk model (e.g. Bulgarian) — needs Whisper
+        // Language has no Vosk model (Bulgarian) — needs Whisper
         if (language.urls.isEmpty()) {
-            notify(buildIdleNotification("⬇ Download the Whisper model in the app to use ${language.displayName}"))
+            if (WhisperEngine.isModelDownloaded(this)) {
+                if (WhisperEngine.isReady) startWhisperCapture(language, threshold)
+                else {
+                    notify(buildIdleNotification("⏳ Loading Whisper model…"))
+                    WhisperEngine.initialize(
+                        context = this,
+                        onReady = { try { startCapture() } catch (_: Throwable) {} },
+                        onError = { e -> try { notify(buildIdleNotification("❌ $e")) } catch (_: Throwable) {} }
+                    )
+                }
+            } else {
+                notify(buildIdleNotification("⬇ ${language.displayName} needs the Whisper model — download in app"))
+            }
             return
         }
 
-        // Local Vosk path
+        // Vosk model not yet downloaded → auto-download in background
+        if (!ModelDownloader.isDownloaded(this, language)) {
+            autoDownloadVosk(language)
+            return
+        }
+
+        // Vosk model exists but not loaded yet
         if (!LocalTranscriber.isReady) {
             notify(buildIdleNotification("⏳ Loading model (first time, ~10 sec)…"))
             LocalTranscriber.initialize(
                 context = this,
                 onReady = { try { startCapture() } catch (_: Throwable) {} },
-                onError = { _ -> try { notify(buildIdleNotification("❌ Model failed — re-download in the app")) } catch (_: Throwable) {} }
+                onError = { _ -> try { notify(buildIdleNotification("❌ Model load failed — tap Transcribe to retry")) } catch (_: Throwable) {} }
             )
             return
         }
@@ -175,7 +187,6 @@ class AudioCaptureService : Service() {
         captureJob = scope.launch {
             try {
                 val buf         = ShortArray(4_096)
-                val rmsWindow   = ArrayDeque<Float>()
                 val startMs     = System.currentTimeMillis()
                 var lastLoud    = startMs
                 var gotAudio    = false
@@ -196,13 +207,10 @@ class AudioCaptureService : Service() {
                     if (rms > threshold) { gotAudio = true; lastLoud = now }
 
                     if (!gotAudio && elapsed > STARTUP_TIMEOUT) {
-                        notify(buildIdleNotification("⏰ No audio — play the message louder or closer to the mic"))
+                        notify(buildIdleNotification("⏰ No audio detected — play the message louder"))
                         break
                     }
                     if (gotAudio && (now - lastLoud) > SILENCE_GAP_MS) break
-
-                    if (rmsWindow.size >= 8) rmsWindow.removeFirst()
-                    rmsWindow.addLast(rms.toFloat())
 
                     try {
                         val bytes = ByteArray(read * 2)
@@ -219,8 +227,11 @@ class AudioCaptureService : Service() {
                         }
                         if (now - lastNotif > NOTIF_THROTTLE_MS) {
                             lastNotif = now
-                            val bar = rmsBar(rmsWindow)
-                            val body = if (accumulated.isNotEmpty()) "$bar  $accumulated…" else "$bar  ${if (gotAudio) "Transcribing…" else "Play the voice message now…"}"
+                            val body = when {
+                                accumulated.isNotEmpty() -> "$accumulated…"
+                                gotAudio                 -> "Transcribing…"
+                                else                     -> "Play the voice message now…"
+                            }
                             notify(buildRecordingNotification(body))
                         }
                     } catch (_: Throwable) {}
@@ -259,6 +270,27 @@ class AudioCaptureService : Service() {
                 try { releaseAudioRecord() } catch (_: Throwable) {}
                 try { notify(buildIdleNotification()) } catch (_: Throwable) {}
             }
+        }
+    }
+
+    private fun autoDownloadVosk(language: Language) {
+        notify(buildIdleNotification("⬇ Downloading ${language.displayName} model… please wait"))
+        scope.launch {
+            ModelDownloader.download(
+                context  = this@AudioCaptureService,
+                language = language,
+                onProgress = { pct ->
+                    val msg = if (pct < 0) "Extracting model…"
+                              else "Downloading ${language.displayName} model… $pct%"
+                    try { notify(buildIdleNotification(msg)) } catch (_: Throwable) {}
+                },
+                onComplete = {
+                    try { notify(buildIdleNotification("✅ Model ready — tap 🎙 Transcribe to start")) } catch (_: Throwable) {}
+                },
+                onError = { err ->
+                    try { notify(buildIdleNotification("❌ Download failed — check internet and try again")) } catch (_: Throwable) {}
+                }
+            )
         }
     }
 
@@ -353,14 +385,6 @@ class AudioCaptureService : Service() {
             cb.setPrimaryClip(ClipData.newPlainText("Transcript", text))
         } catch (_: Throwable) {}
     }
-
-    private fun rmsBar(window: ArrayDeque<Float>): String =
-        window.joinToString("") { r ->
-            when {
-                r > 800 -> "█"; r > 400 -> "▆"; r > 200 -> "▄"
-                r > 100 -> "▂"; else    -> "▁"
-            }
-        }.ifEmpty { "▁▁▁▁▁▁▁▁" }
 
     private fun buildMicCapture(): AudioRecord? {
         val minBuf  = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
