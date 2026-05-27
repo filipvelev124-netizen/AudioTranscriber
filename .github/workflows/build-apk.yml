@@ -35,27 +35,23 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      # Delete old "latest" release + tag so we can recreate it cleanly
-      - name: Delete existing latest release
-        run: gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Creates a fresh "latest" GitHub Release with the APK attached
+      # Publish to GitHub Releases using gh CLI (avoids softprops race condition)
       # Download from: github.com/<you>/AudioTranscriber/releases/latest
       - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "Latest Build"
-          body: |
-            Automatically built from the latest code on `main`.
+        run: |
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          sleep 5
+          cat > /tmp/release_notes.md << 'EOF'
+          Automatically built from the latest code on `main`.
 
-            ## How to install on your phone
-            1. Download **app-debug.apk** below
-            2. On your phone: Settings → Security → **Install unknown apps** → allow your browser
-            3. Open the downloaded APK and tap Install
-          files: app/build/outputs/apk/debug/app-debug.apk
-          make_latest: true
+          ## How to install on your phone
+          1. Download **app-debug.apk** below
+          2. On your phone: **Settings → Security → Install unknown apps** → allow your browser
+          3. Open the downloaded APK and tap Install
+          EOF
+          gh release create latest \
+            --title "Latest Build" \
+            --notes-file /tmp/release_notes.md \
+            app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
