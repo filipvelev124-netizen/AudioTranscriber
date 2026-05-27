@@ -36,8 +36,9 @@ class AudioCaptureService : Service() {
         const val ACTION_COPY_RESULT   = "com.audiotranscriber.COPY_RESULT"
         const val ACTION_STOP_SERVICE  = "com.audiotranscriber.STOP_SERVICE"
 
-        const val CHANNEL_ID      = "capture_channel"
-        const val NOTIFICATION_ID = 42
+        const val CHANNEL_ID        = "capture_channel"
+        const val RESULT_CHANNEL_ID = "result_channel"
+        const val NOTIFICATION_ID   = 42
         const val SAMPLE_RATE     = 16_000
 
         @Volatile var isRecording = false
@@ -388,9 +389,15 @@ class AudioCaptureService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(CHANNEL_ID, "Audio Transcriber", NotificationManager.IMPORTANCE_LOW)
-                .apply { setShowBadge(false) }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "Audio Transcriber", NotificationManager.IMPORTANCE_LOW)
+                    .apply { setShowBadge(false) }
+            )
+            nm.createNotificationChannel(
+                NotificationChannel(RESULT_CHANNEL_ID, "Transcription Results", NotificationManager.IMPORTANCE_HIGH)
+                    .apply { setShowBadge(true) }
+            )
         }
     }
 
@@ -448,29 +455,27 @@ class AudioCaptureService : Service() {
             .build()
 
     private fun buildRecordingNotification(text: String) =
-        NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("🔴 Recording")
+        NotificationCompat.Builder(this, RESULT_CHANNEL_ID)
+            .setContentTitle("🔴 Recording — play the voice message now")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(openAppIntent())
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .addAction(serviceAction(ACTION_STOP_CAPTURE, "⏹ Stop"))
             .build()
 
     private fun buildResultNotification(result: String, copied: Boolean) =
-        NotificationCompat.Builder(this, CHANNEL_ID)
+        NotificationCompat.Builder(this, RESULT_CHANNEL_ID)
             .setContentTitle(if (copied) "✅ Copied to clipboard" else "Transcription complete")
             .setContentText(result)
             .setStyle(NotificationCompat.BigTextStyle().bigText(result))
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(openAppIntent())
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .apply {
-                if (!copied) addAction(copyAction())   // already copied → skip
-                addAction(shareAction())
-                addAction(serviceAction(ACTION_START_CAPTURE, "🎙 Again"))
-            }
+            .setOngoing(false)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .addAction(copyAction())
+            .addAction(shareAction())
+            .addAction(serviceAction(ACTION_START_CAPTURE, "🎙 Again"))
             .build()
 }
