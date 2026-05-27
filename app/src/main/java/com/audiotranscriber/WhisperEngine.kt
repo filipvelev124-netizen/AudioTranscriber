@@ -56,7 +56,7 @@ object WhisperEngine {
     fun transcribe(samples: FloatArray, language: Language): String {
         val ptr = contextPtr
         if (ptr == 0L) return ""
-        return try { transcribeJni(ptr, samples, language.whisperCode) } catch (_: Throwable) { "" }
+        return try { transcribeJni(ptr, samples, "auto") } catch (_: Throwable) { "" }
     }
 
     @Synchronized
