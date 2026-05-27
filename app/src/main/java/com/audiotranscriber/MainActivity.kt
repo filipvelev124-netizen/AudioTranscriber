@@ -292,10 +292,9 @@ class MainActivity : AppCompatActivity() {
         val lang = Language.getSelected(this)
         chipLanguage.text = lang.displayName
         val engineLabel = when {
-            ModelDownloader.isDownloaded(this, lang) && lang.urls.isNotEmpty() -> "Vosk"
-            WhisperEngine.isModelDownloaded(this)                              -> "Whisper"
-            lang.urls.isNotEmpty()                                             -> "Auto-download"
-            else                                                               -> "No model"
+            lang.isOnline                            -> "Online"
+            ModelDownloader.isDownloaded(this, lang) -> "Vosk"
+            else                                     -> "Auto-download"
         }
         chipMode.text = engineLabel
         tvModeChip.text = engineLabel
@@ -305,9 +304,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showLanguagePicker() {
         val languages = Language.values()
-        val whisperReady = WhisperEngine.isModelDownloaded(this)
         val names = languages.map { lang ->
-            if (whisperReady || ModelDownloader.isDownloaded(this, lang)) "✅ ${lang.displayName}"
+            if (lang.isOnline || ModelDownloader.isDownloaded(this, lang)) "✅ ${lang.displayName}"
             else lang.displayName
         }.toTypedArray()
         val currentIndex = languages.indexOf(Language.getSelected(this)).coerceAtLeast(0)
@@ -357,15 +355,6 @@ class MainActivity : AppCompatActivity() {
     )
 
     private fun getSetupIssue(): SetupIssue? {
-        val lang = Language.getSelected(this)
-        // Bulgarian has no Vosk model — must download Whisper
-        if (lang.urls.isEmpty() && !WhisperEngine.isModelDownloaded(this)) {
-            return SetupIssue(
-                "Whisper model needed",
-                "Bulgarian requires the Whisper model (~75 MB). Download it to transcribe in Bulgarian.",
-                "Download", "download_whisper"
-            )
-        }
         if (!hasMicPermission()) {
             return SetupIssue(
                 "Microphone permission needed",
@@ -390,51 +379,16 @@ class MainActivity : AppCompatActivity() {
             btnSetupAction.setOnClickListener { handleSetupAction(issue.actionType) }
         }
 
-        if (WhisperEngine.isModelDownloaded(this) && !WhisperEngine.isReady) {
-            WhisperEngine.initialize(this, onReady = {}, onError = {})
-        }
         val lang = Language.getSelected(this)
-        if (!WhisperEngine.isModelDownloaded(this) &&
-            ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady
-        ) {
+        if (!lang.isOnline && ModelDownloader.isDownloaded(this, lang) && !LocalTranscriber.isReady) {
             LocalTranscriber.initialize(this, onReady = {}, onError = {})
         }
     }
 
     private fun handleSetupAction(actionType: String) {
         when (actionType) {
-            "settings"         -> startActivity(Intent(this, SettingsActivity::class.java))
-            "download_whisper" -> downloadWhisperModel()
-            "permission"       -> requestMissingPermissions()
-        }
-    }
-
-    // ── Model download ────────────────────────────────────────────────────────
-
-    private fun downloadWhisperModel() {
-        cardSetupStatus.isVisible = true
-        tvSetupTitle.text = "Downloading Whisper model…"
-        tvSetupMessage.text = "Starting download…"
-        btnSetupAction.isEnabled = false
-
-        scope.launch {
-            ModelDownloader.downloadWhisperModel(
-                context = this@MainActivity,
-                onProgress = { pct ->
-                    tvSetupMessage.text = "Downloading Whisper model… $pct%"
-                },
-                onComplete = {
-                    btnSetupAction.isEnabled = true
-                    refreshStatus()
-                },
-                onError = { err ->
-                    tvSetupTitle.text = "Download failed"
-                    tvSetupMessage.text = err
-                    btnSetupAction.isEnabled = true
-                    btnSetupAction.text = "Retry"
-                    btnSetupAction.setOnClickListener { downloadWhisperModel() }
-                }
-            )
+            "settings"   -> startActivity(Intent(this, SettingsActivity::class.java))
+            "permission" -> requestMissingPermissions()
         }
     }
 

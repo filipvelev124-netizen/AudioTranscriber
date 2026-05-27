@@ -55,7 +55,7 @@ class AudioCaptureService : Service() {
 
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
-    private var stopWhisperCapture: (() -> Unit)? = null
+    private var onlineTranscriber: OnlineTranscriber? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var captureStartMs = 0L
 
@@ -125,28 +125,16 @@ class AudioCaptureService : Service() {
         cancelResultNotification()
         captureJob?.cancel()
         releaseAudioRecord()
-        try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
-        stopWhisperCapture = null
+        try { onlineTranscriber?.cancel() } catch (_: Throwable) {}
+        onlineTranscriber = null
         captureStartMs = 0L
 
         val language  = Language.getSelected(this)
         val threshold = AppPrefs.getSilenceThreshold(this)
 
-        // Language has no Vosk model (Bulgarian) — needs Whisper
-        if (language.urls.isEmpty()) {
-            if (WhisperEngine.isModelDownloaded(this)) {
-                if (WhisperEngine.isReady) startWhisperCapture(language, threshold)
-                else {
-                    notify(buildIdleNotification("⏳ Loading Whisper model…"))
-                    WhisperEngine.initialize(
-                        context = this,
-                        onReady = { try { startCapture() } catch (_: Throwable) {} },
-                        onError = { e -> try { notify(buildIdleNotification("❌ $e")) } catch (_: Throwable) {} }
-                    )
-                }
-            } else {
-                notify(buildIdleNotification("⬇ ${language.displayName} needs the Whisper model — download in app"))
-            }
+        // Online languages (Bulgarian) use Android SpeechRecognizer — no model download needed
+        if (language.isOnline) {
+            startOnlineCapture(language)
             return
         }
 
@@ -287,46 +275,36 @@ class AudioCaptureService : Service() {
                 onComplete = {
                     try { notify(buildIdleNotification("✅ Model ready — tap 🎙 Transcribe to start")) } catch (_: Throwable) {}
                 },
-                onError = { err ->
+                onError = { _ ->
                     try { notify(buildIdleNotification("❌ Download failed — check internet and try again")) } catch (_: Throwable) {}
                 }
             )
         }
     }
 
-    private fun startWhisperCapture(language: Language, threshold: Double) {
-        if (!WhisperEngine.isReady) {
-            notify(buildIdleNotification("⏳ Loading Whisper model (first time, ~5 sec)…"))
-            WhisperEngine.initialize(
-                context = this,
-                onReady = { try { startCapture() } catch (_: Throwable) {} },
-                onError = { e -> try { notify(buildIdleNotification("❌ $e")) } catch (_: Throwable) {} }
-            )
-            return
-        }
-
+    private fun startOnlineCapture(language: Language) {
         isRecording = true
         captureStartMs = System.currentTimeMillis()
-        notify(buildRecordingNotification("▶ Play the voice message now…"))
+        notify(buildRecordingNotification("🌐 Listening (${language.displayName})… play the message now"))
 
-        val transcriber = WhisperLocalTranscriber(
-            context          = this,
-            language         = language,
-            silenceThreshold = threshold,
-            onPartial = { partial -> try { notify(buildRecordingNotification(partial)) } catch (_: Throwable) {} },
+        onlineTranscriber = OnlineTranscriber(
+            context   = this,
+            locale    = language.onlineLocale!!,
+            onPartial = { partial ->
+                try { notify(buildRecordingNotification("$partial…")) } catch (_: Throwable) {}
+            },
             onResult  = { text ->
                 isRecording = false
-                stopWhisperCapture = null
+                onlineTranscriber = null
                 onTranscriptionComplete(text, language)
             },
             onError   = { msg ->
                 isRecording = false
-                stopWhisperCapture = null
+                onlineTranscriber = null
                 try { notify(buildIdleNotification(msg)) } catch (_: Throwable) {}
             }
         )
-        stopWhisperCapture = { transcriber.stop() }
-        transcriber.start()
+        onlineTranscriber?.start()
     }
 
     // Called on the main thread after every successful transcription
@@ -368,8 +346,8 @@ class AudioCaptureService : Service() {
         captureJob = null
         isRecording = false
         releaseAudioRecord()
-        try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
-        stopWhisperCapture = null
+        try { onlineTranscriber?.stop() } catch (_: Throwable) {}
+        onlineTranscriber = null
         try { notify(buildIdleNotification()) } catch (_: Throwable) {}
     }
 
@@ -403,8 +381,8 @@ class AudioCaptureService : Service() {
         try { captureJob?.cancel() } catch (_: Throwable) {}
         try { scope.cancel() } catch (_: Throwable) {}
         try { releaseAudioRecord() } catch (_: Throwable) {}
-        try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
-        stopWhisperCapture = null
+        try { onlineTranscriber?.cancel() } catch (_: Throwable) {}
+        onlineTranscriber = null
         if (copyReceiverRegistered) try { unregisterReceiver(copyReceiver) } catch (_: Throwable) {}
         super.onDestroy()
     }

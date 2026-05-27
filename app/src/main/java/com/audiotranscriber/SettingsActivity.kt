@@ -128,9 +128,11 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun updateModelStatus() {
+        val lang = Language.getSelected(this)
         tvModelStatus.text = when {
-            WhisperEngine.isModelDownloaded(this) -> "Ready — all languages offline"
-            else -> "Not downloaded — tap to download (~75 MB)"
+            lang.isOnline                            -> "Online — uses Google Speech (Bulgarian)"
+            ModelDownloader.isDownloaded(this, lang) -> "Ready — ${lang.displayName} model loaded"
+            else                                     -> "Not downloaded — tap mic button to auto-download"
         }
     }
 
@@ -194,21 +196,18 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
-    // ── Whisper model options ────────────────────────────────────────────────
+    // ── Model info ───────────────────────────────────────────────────────────
 
     private fun showModelOptions() {
-        if (!WhisperEngine.isModelDownloaded(this)) {
-            startActivity(Intent(this, MainActivity::class.java))
-            finish()
-            return
+        val lang = Language.getSelected(this)
+        val message = when {
+            lang.isOnline -> "Bulgarian uses Android's built-in online speech recognition (Google). No model download needed — just needs an internet connection."
+            ModelDownloader.isDownloaded(this, lang) -> "${lang.displayName} model is ready for offline use.\n\nTo free up space, you can delete it — it will re-download automatically next time you transcribe."
+            else -> "${lang.displayName} model not downloaded yet. Tap the mic button and it will download automatically on first use (~40 MB)."
         }
         AlertDialog.Builder(this)
-            .setTitle("Whisper Model")
-            .setMessage("Model is ready. All languages including Bulgarian work offline.\n\nRe-download if you suspect the model file is corrupted.")
-            .setNeutralButton("Re-download") { _, _ ->
-                startActivity(Intent(this, MainActivity::class.java))
-                finish()
-            }
+            .setTitle("Speech Model")
+            .setMessage(message)
             .setPositiveButton("OK", null)
             .show()
     }
