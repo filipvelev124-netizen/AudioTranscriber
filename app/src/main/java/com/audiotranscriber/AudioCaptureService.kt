@@ -36,9 +36,10 @@ class AudioCaptureService : Service() {
         const val ACTION_COPY_RESULT   = "com.audiotranscriber.COPY_RESULT"
         const val ACTION_STOP_SERVICE  = "com.audiotranscriber.STOP_SERVICE"
 
-        const val CHANNEL_ID        = "capture_channel"
-        const val RESULT_CHANNEL_ID = "result_channel"
-        const val NOTIFICATION_ID   = 42
+        const val CHANNEL_ID             = "capture_channel"
+        const val RESULT_CHANNEL_ID      = "result_channel"
+        const val NOTIFICATION_ID        = 42  // foreground service notification
+        const val RESULT_NOTIFICATION_ID = 43  // result popup (separate from foreground)
         const val SAMPLE_RATE     = 16_000
 
         @Volatile var isRecording = false
@@ -66,7 +67,7 @@ class AudioCaptureService : Service() {
             try {
                 if (lastResult.isEmpty()) return
                 copyToClipboard(lastResult)
-                notify(buildResultNotification(lastResult, copied = true))
+                notifyResult(buildResultNotification(lastResult, copied = true))
             } catch (_: Throwable) {}
         }
     }
@@ -121,6 +122,7 @@ class AudioCaptureService : Service() {
     // ── Capture ───────────────────────────────────────────────────────────────
 
     private fun startCapture() {
+        cancelResultNotification()
         captureJob?.cancel()
         releaseAudioRecord()
         try { stopWhisperCapture?.invoke() } catch (_: Throwable) {}
@@ -323,7 +325,10 @@ class AudioCaptureService : Service() {
             } catch (_: Throwable) {}
         }
 
-        try { notify(buildResultNotification(result, copied = autoCopy)) } catch (_: Throwable) {}
+        // Post result as a separate popup notification (not the foreground one)
+        try { notifyResult(buildResultNotification(result, copied = autoCopy)) } catch (_: Throwable) {}
+        // Reset foreground notification back to idle/ready
+        try { notify(buildIdleNotification()) } catch (_: Throwable) {}
     }
 
     fun stopCapture() {
@@ -384,6 +389,16 @@ class AudioCaptureService : Service() {
 
     private fun notify(n: Notification) {
         try { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, n) }
+        catch (_: Throwable) {}
+    }
+
+    private fun notifyResult(n: Notification) {
+        try { getSystemService(NotificationManager::class.java).notify(RESULT_NOTIFICATION_ID, n) }
+        catch (_: Throwable) {}
+    }
+
+    private fun cancelResultNotification() {
+        try { getSystemService(NotificationManager::class.java).cancel(RESULT_NOTIFICATION_ID) }
         catch (_: Throwable) {}
     }
 
@@ -455,13 +470,13 @@ class AudioCaptureService : Service() {
             .build()
 
     private fun buildRecordingNotification(text: String) =
-        NotificationCompat.Builder(this, RESULT_CHANNEL_ID)
+        NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("🔴 Recording — play the voice message now")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(openAppIntent())
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(serviceAction(ACTION_STOP_CAPTURE, "⏹ Stop"))
             .build()
 
