@@ -8,6 +8,7 @@ import android.animation.ValueAnimator
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
+import android.app.ActivityOptions
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -128,16 +129,21 @@ class MainActivity : AppCompatActivity() {
 
     // ── Bottom nav ──────────────────────────────────────────────────────────
 
+    private fun tabAnim(enterAnim: Int, exitAnim: Int) =
+        ActivityOptions.makeCustomAnimation(this, enterAnim, exitAnim).toBundle()
+
     private fun setupBottomNav() {
         bottomNav.selectedItemId = R.id.nav_transcribe
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_history -> {
-                    startActivity(Intent(this, HistoryActivity::class.java))
+                    startActivity(Intent(this, HistoryActivity::class.java),
+                        tabAnim(R.anim.slide_in_right, R.anim.slide_out_left))
                     false
                 }
                 R.id.nav_settings -> {
-                    startActivity(Intent(this, SettingsActivity::class.java))
+                    startActivity(Intent(this, SettingsActivity::class.java),
+                        tabAnim(R.anim.slide_in_right, R.anim.slide_out_left))
                     false
                 }
                 else -> true

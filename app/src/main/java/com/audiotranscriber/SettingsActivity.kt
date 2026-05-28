@@ -1,5 +1,6 @@
 package com.audiotranscriber
 
+import android.app.ActivityOptions
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -65,16 +66,21 @@ class SettingsActivity : AppCompatActivity() {
 
     // ── Bottom nav ──────────────────────────────────────────────────────────
 
+    private fun tabAnim(enterAnim: Int, exitAnim: Int) =
+        ActivityOptions.makeCustomAnimation(this, enterAnim, exitAnim).toBundle()
+
     private fun setupBottomNav() {
         bottomNav.selectedItemId = R.id.nav_settings
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_transcribe -> {
-                    startActivity(Intent(this, MainActivity::class.java))
+                    startActivity(Intent(this, MainActivity::class.java),
+                        tabAnim(R.anim.slide_in_left, R.anim.slide_out_right))
                     finish(); false
                 }
                 R.id.nav_history -> {
-                    startActivity(Intent(this, HistoryActivity::class.java))
+                    startActivity(Intent(this, HistoryActivity::class.java),
+                        tabAnim(R.anim.slide_in_left, R.anim.slide_out_right))
                     finish(); false
                 }
                 else -> true

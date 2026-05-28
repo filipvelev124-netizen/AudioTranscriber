@@ -1,5 +1,6 @@
 package com.audiotranscriber
 
+import android.app.ActivityOptions
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -93,16 +94,21 @@ class HistoryActivity : AppCompatActivity() {
 
     // ── Bottom nav ──────────────────────────────────────────────────────────
 
+    private fun tabAnim(enterAnim: Int, exitAnim: Int) =
+        ActivityOptions.makeCustomAnimation(this, enterAnim, exitAnim).toBundle()
+
     private fun setupBottomNav() {
         bottomNav.selectedItemId = R.id.nav_history
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_transcribe -> {
-                    startActivity(Intent(this, MainActivity::class.java))
+                    startActivity(Intent(this, MainActivity::class.java),
+                        tabAnim(R.anim.slide_in_left, R.anim.slide_out_right))
                     finish(); false
                 }
                 R.id.nav_settings -> {
-                    startActivity(Intent(this, SettingsActivity::class.java))
+                    startActivity(Intent(this, SettingsActivity::class.java),
+                        tabAnim(R.anim.slide_in_right, R.anim.slide_out_left))
                     false
                 }
                 else -> true
