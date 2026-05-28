@@ -5,6 +5,9 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -67,6 +70,7 @@ class MainActivity : AppCompatActivity() {
 
     private var pulseAnimator: AnimatorSet? = null
     private val waveformAnimators = mutableListOf<ValueAnimator>()
+    private val idleBreathingAnimators = mutableListOf<ValueAnimator>()
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -117,6 +121,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         stopPulse()
         stopWaveformAnimation()
+        stopIdleBreathing()
         scope.cancel()
         super.onDestroy()
     }
@@ -197,6 +202,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun startIdleBreathing() {
+        stopIdleBreathing()
+        val density = resources.displayMetrics.density
+        for (i in 0 until llWaveformBars.childCount) {
+            val bar = llWaveformBars.getChildAt(i)
+            val baseH = (idleBarHeightsDp.getOrElse(i) { 30 } * density).toInt()
+            val minH  = (baseH * 0.65f).toInt()
+            val maxH  = (baseH * 1.20f).toInt()
+            val anim  = ValueAnimator.ofInt(minH, maxH).apply {
+                duration        = 2400L + i * 120L
+                repeatCount     = ValueAnimator.INFINITE
+                repeatMode      = ValueAnimator.REVERSE
+                interpolator    = AccelerateDecelerateInterpolator()
+                startDelay      = i * 110L
+                addUpdateListener { animator ->
+                    val lp = bar.layoutParams
+                    lp.height = animator.animatedValue as Int
+                    bar.layoutParams = lp
+                }
+            }
+            anim.start()
+            idleBreathingAnimators.add(anim)
+        }
+    }
+
+    private fun stopIdleBreathing() {
+        idleBreathingAnimators.forEach { it.cancel() }
+        idleBreathingAnimators.clear()
+    }
+
     // ── Pulse animation ──────────────────────────────────────────────────────
 
     private fun startPulse() {
@@ -235,9 +270,34 @@ class MainActivity : AppCompatActivity() {
         vPulseRing2.alpha = 0f
     }
 
+    // ── Spring tap feedback ──────────────────────────────────────────────────
+
+    private fun animateFabTap() {
+        fabMic.scaleX = 0.87f
+        fabMic.scaleY = 0.87f
+        SpringAnimation(fabMic, DynamicAnimation.SCALE_X, 1f).apply {
+            spring.stiffness    = SpringForce.STIFFNESS_MEDIUM
+            spring.dampingRatio = SpringForce.DAMPING_RATIO_LOW_BOUNCY
+        }.start()
+        SpringAnimation(fabMic, DynamicAnimation.SCALE_Y, 1f).apply {
+            spring.stiffness    = SpringForce.STIFFNESS_MEDIUM
+            spring.dampingRatio = SpringForce.DAMPING_RATIO_LOW_BOUNCY
+        }.start()
+    }
+
+    private fun setText(view: TextView, text: String) {
+        if (view.text.toString() == text) return
+        view.animate().cancel()
+        view.animate().alpha(0f).setDuration(100L).withEndAction {
+            view.text = text
+            view.animate().alpha(1f).setDuration(160L)
+        }
+    }
+
     // ── Recording state ──────────────────────────────────────────────────────
 
     private fun toggleCapture() {
+        animateFabTap()
         if (AudioCaptureService.isRecording) {
             sendServiceIntent(AudioCaptureService.ACTION_STOP_CAPTURE)
             setRecordingUi(false)
@@ -251,18 +311,20 @@ class MainActivity : AppCompatActivity() {
     private fun setRecordingUi(recording: Boolean) {
         if (recording) {
             fabMic.setImageResource(R.drawable.ic_stop_24)
-            tvWaveformStatus.text     = "Listening…"
-            tvRecordingTitle.text     = "Recording…"
-            tvRecordingSubtitle.text  = "Tap to stop transcription"
+            stopIdleBreathing()
+            setText(tvWaveformStatus,    "Listening…")
+            setText(tvRecordingTitle,    "Recording…")
+            setText(tvRecordingSubtitle, "Tap to stop transcription")
             startPulse()
             startWaveformAnimation()
         } else {
             fabMic.setImageResource(R.drawable.ic_mic)
-            tvWaveformStatus.text     = "Ready to transcribe"
-            tvRecordingTitle.text     = "Start Recording"
-            tvRecordingSubtitle.text  = "Tap to capture and transcribe audio"
-            stopPulse()
             stopWaveformAnimation()
+            setText(tvWaveformStatus,    "Ready to transcribe")
+            setText(tvRecordingTitle,    "Start Recording")
+            setText(tvRecordingSubtitle, "Tap to capture and transcribe audio")
+            stopPulse()
+            startIdleBreathing()
         }
     }
 

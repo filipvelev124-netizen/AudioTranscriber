@@ -27,7 +27,8 @@
             android:text="ScribePro"
             android:textSize="22sp"
             android:textStyle="bold"
-            android:textColor="@color/primary" />
+            android:textColor="@color/primary"
+            android:letterSpacing="-0.02" />
 
         <TextView
             android:id="@+id/tvModeChip"
@@ -156,10 +157,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Start Recording"
-                android:textSize="26sp"
+                android:textSize="27sp"
                 android:textStyle="bold"
                 android:textColor="@color/on_surface"
                 android:gravity="center"
+                android:letterSpacing="-0.02"
                 android:layout_marginBottom="6dp" />
 
             <TextView
@@ -170,6 +172,7 @@
                 android:textSize="14sp"
                 android:textColor="@color/on_surface_variant"
                 android:gravity="center"
+                android:letterSpacing="0.005"
                 android:layout_marginBottom="20dp" />
 
             <!-- Language + Mode chips -->
@@ -266,7 +269,8 @@
                     android:text="Recent Activity"
                     android:textSize="16sp"
                     android:textStyle="bold"
-                    android:textColor="@color/on_surface" />
+                    android:textColor="@color/on_surface"
+                    android:letterSpacing="-0.01" />
 
                 <Button
                     android:id="@+id/btnViewAll"
