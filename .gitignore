@@ -28,3 +28,6 @@ captures/
 
 # Keep the Gradle wrapper (needed to build without installing Gradle)
 !gradle/wrapper/gradle-wrapper.jar
+
+# Vosk model zips — downloaded by CI during build, never committed
+app/src/main/assets/vosk_models/

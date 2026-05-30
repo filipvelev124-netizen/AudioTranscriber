@@ -286,21 +286,21 @@ class AudioCaptureService : Service() {
     }
 
     private fun autoDownloadVosk(language: Language) {
-        notify(buildIdleNotification("⬇ Downloading ${language.displayName} model… please wait"))
+        notify(buildIdleNotification("⚙ Setting up ${language.displayName}…"))
         scope.launch {
             ModelDownloader.download(
                 context  = this@AudioCaptureService,
                 language = language,
                 onProgress = { pct ->
-                    val msg = if (pct < 0) "Extracting model…"
-                              else "Downloading ${language.displayName} model… $pct%"
+                    val msg = if (pct < 0) "Installing ${language.displayName}…"
+                              else "Downloading ${language.displayName}… $pct%"
                     try { notify(buildIdleNotification(msg)) } catch (_: Throwable) {}
                 },
                 onComplete = {
-                    try { notify(buildIdleNotification("✅ Model ready — tap 🎙 Transcribe to start")) } catch (_: Throwable) {}
+                    try { notify(buildIdleNotification("✅ ${language.displayName} ready — tap 🎙 Transcribe")) } catch (_: Throwable) {}
                 },
                 onError = { _ ->
-                    try { notify(buildIdleNotification("❌ Download failed — check internet and try again")) } catch (_: Throwable) {}
+                    try { notify(buildIdleNotification("❌ Setup failed — check internet and try again")) } catch (_: Throwable) {}
                 }
             )
         }

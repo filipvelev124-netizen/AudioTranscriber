@@ -58,6 +58,11 @@ android {
         viewBinding true
     }
 
+    // Zip files are already compressed — store them as-is in the APK
+    androidResources {
+        noCompress 'zip'
+    }
+
     // Avoid conflicts from Vosk / JNA native libs
     packagingOptions {
         pickFirst 'lib/x86/libc++_shared.so'

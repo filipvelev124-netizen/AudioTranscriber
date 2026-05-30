@@ -25,6 +25,27 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      - name: Bundle Vosk language models into APK assets
+        run: |
+          mkdir -p app/src/main/assets/vosk_models
+          # Download all 13 models in parallel — each ~40 MB
+          curl -L -f -o app/src/main/assets/vosk_models/english.zip    "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"   &
+          curl -L -f -o app/src/main/assets/vosk_models/spanish.zip    "https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip"      &
+          curl -L -f -o app/src/main/assets/vosk_models/french.zip     "https://alphacephei.com/vosk/models/vosk-model-small-fr-pguyot-0.3.zip" &
+          curl -L -f -o app/src/main/assets/vosk_models/german.zip     "https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip"      &
+          curl -L -f -o app/src/main/assets/vosk_models/russian.zip    "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"      &
+          curl -L -f -o app/src/main/assets/vosk_models/portuguese.zip "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"       &
+          curl -L -f -o app/src/main/assets/vosk_models/italian.zip    "https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip"      &
+          curl -L -f -o app/src/main/assets/vosk_models/chinese.zip    "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip"      &
+          curl -L -f -o app/src/main/assets/vosk_models/hindi.zip      "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip"      &
+          curl -L -f -o app/src/main/assets/vosk_models/dutch.zip      "https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip"      &
+          curl -L -f -o app/src/main/assets/vosk_models/turkish.zip    "https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip"       &
+          curl -L -f -o app/src/main/assets/vosk_models/korean.zip     "https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip"      &
+          curl -L -f -o app/src/main/assets/vosk_models/bulgarian.zip  "https://alphacephei.com/vosk/models/vosk-model-small-bg-0.22.zip"      &
+          wait
+          echo "Bundled models:"
+          ls -lh app/src/main/assets/vosk_models/
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 

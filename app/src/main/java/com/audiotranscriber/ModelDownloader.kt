@@ -106,6 +106,38 @@ object ModelDownloader {
     ) = withContext(Dispatchers.IO) {
         val destDir = modelDir(context, language)
         val tempDir = File(context.filesDir, "vosk-model-downloading")
+        val zipFile = File(context.cacheDir, "vosk_model.zip")
+
+        // ── Bundled path: model zip is already inside the APK assets ─────────
+        val assetName = "vosk_models/${language.name.lowercase()}.zip"
+        val isBundled = try { context.assets.open(assetName).close(); true } catch (_: Exception) { false }
+
+        if (isBundled) {
+            try {
+                destDir.deleteRecursively()
+                tempDir.deleteRecursively()
+
+                // Copy asset zip to cache — assets can't be unzipped in place
+                context.assets.open(assetName).use { input ->
+                    zipFile.outputStream().use { output -> input.copyTo(output, bufferSize = 65_536) }
+                }
+
+                withContext(Dispatchers.Main) { onProgress(-1) }
+                unzip(zipFile, context.filesDir, tempDir.name)
+                zipFile.delete()
+                if (tempDir.exists()) tempDir.renameTo(destDir)
+
+                withContext(Dispatchers.Main) { onComplete() }
+            } catch (e: Throwable) {
+                try { zipFile.delete() } catch (_: Throwable) {}
+                try { destDir.deleteRecursively() } catch (_: Throwable) {}
+                try { tempDir.deleteRecursively() } catch (_: Throwable) {}
+                withContext(Dispatchers.Main) { onError(e.message ?: "Failed to install bundled model") }
+            }
+            return@withContext
+        }
+
+        // ── Network path: download from Alphacephei ───────────────────────────
         try {
             // Only wipe THIS language's directory; other languages are kept intact
             destDir.deleteRecursively()
@@ -139,8 +171,6 @@ object ModelDownloader {
             }
 
             val contentLength = body.contentLength()
-            val zipFile = File(context.cacheDir, "vosk_model.zip")
-
             body.byteStream().use { input ->
                 zipFile.outputStream().use { output ->
                     val buffer = ByteArray(8_192)
@@ -158,9 +188,6 @@ object ModelDownloader {
             }
 
             withContext(Dispatchers.Main) { onProgress(-1) }
-
-            // Unzip renames the extracted folder to tempDir;
-            // then rename tempDir → language-specific destDir
             unzip(zipFile, context.filesDir, tempDir.name)
             zipFile.delete()
             tempDir.renameTo(destDir)
@@ -168,7 +195,7 @@ object ModelDownloader {
             withContext(Dispatchers.Main) { onComplete() }
 
         } catch (e: Throwable) {
-            try { File(context.cacheDir, "vosk_model.zip").delete() } catch (_: Throwable) {}
+            try { zipFile.delete() } catch (_: Throwable) {}
             try { destDir.deleteRecursively() } catch (_: Throwable) {}
             try { tempDir.deleteRecursively() } catch (_: Throwable) {}
             withContext(Dispatchers.Main) { onError(e.message ?: "Unknown error") }
