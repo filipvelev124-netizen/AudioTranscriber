@@ -58,6 +58,9 @@ class AudioCaptureService : Service() {
     private var onlineTranscriber: OnlineTranscriber? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var captureStartMs = 0L
+    // Graceful stop flag: set by ACTION_STOP_CAPTURE so the Vosk loop exits naturally
+    // and the accumulated text is processed instead of discarded.
+    @Volatile private var stopRequested = false
 
     private var lastResult = ""
     private var copyReceiverRegistered = false
@@ -137,8 +140,8 @@ class AudioCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_CAPTURE -> startCapture()
-            ACTION_STOP_CAPTURE  -> stopCapture()
-            ACTION_STOP_SERVICE  -> { stopCapture(); isRunning = false; stopSelf() }
+            ACTION_STOP_CAPTURE  -> stopCapture(saveResults = true)
+            ACTION_STOP_SERVICE  -> { stopCapture(saveResults = false); isRunning = false; stopSelf() }
         }
         return START_STICKY
     }
@@ -147,6 +150,7 @@ class AudioCaptureService : Service() {
 
     private fun startCapture() {
         cancelResultNotification()
+        stopRequested = false
         captureJob?.cancel()
         releaseAudioRecord()
         try { onlineTranscriber?.cancel() } catch (_: Throwable) {}
@@ -205,7 +209,7 @@ class AudioCaptureService : Service() {
                 var lastNotif   = 0L
                 val accumulated = StringBuilder()
 
-                while (isActive) {
+                while (isActive && !stopRequested) {
                     val now     = System.currentTimeMillis()
                     val elapsed = now - startMs
                     if (elapsed > HARD_LIMIT_MS) break
@@ -249,6 +253,7 @@ class AudioCaptureService : Service() {
                     } catch (_: Throwable) {}
                 }
 
+                // Hard-cancelled (new capture started / service stopping) — discard results
                 if (!isActive) { try { recognizer.close() } catch (_: Throwable) {}; return@launch }
 
                 isRecording = false
@@ -341,9 +346,9 @@ class AudioCaptureService : Service() {
         val durationMs = if (captureStartMs > 0L) System.currentTimeMillis() - captureStartMs else 0L
         captureStartMs = 0L
 
-        // Auto-copy if enabled
+        // Always copy to clipboard — result is ready for use
         val autoCopy = AppPrefs.isAutoCopy(this)
-        if (autoCopy) copyToClipboard(result)
+        copyToClipboard(result)
 
         // Persist to history
         scope.launch {
@@ -365,14 +370,25 @@ class AudioCaptureService : Service() {
         try { notify(buildIdleNotification()) } catch (_: Throwable) {}
     }
 
-    fun stopCapture() {
-        try { captureJob?.cancel() } catch (_: Throwable) {}
-        captureJob = null
+    fun stopCapture(saveResults: Boolean = false) {
         isRecording = false
-        releaseAudioRecord()
-        try { onlineTranscriber?.stop() } catch (_: Throwable) {}
-        onlineTranscriber = null
-        try { notify(buildIdleNotification()) } catch (_: Throwable) {}
+        if (saveResults) {
+            // Graceful stop: Vosk loop exits on the next iteration and runs the normal
+            // finalResult → onTranscriptionComplete path (saves to history, copies clipboard).
+            // Online path: stopListening() delivers partial results via onResult callback.
+            stopRequested = true
+            try { onlineTranscriber?.stop() } catch (_: Throwable) {}
+            // captureJob stays alive until it finishes processing; don't release AudioRecord yet.
+        } else {
+            // Hard stop: discard everything (service dismissed / destroyed).
+            stopRequested = false
+            try { captureJob?.cancel() } catch (_: Throwable) {}
+            captureJob = null
+            releaseAudioRecord()
+            try { onlineTranscriber?.cancel() } catch (_: Throwable) {}
+            onlineTranscriber = null
+            try { notify(buildIdleNotification()) } catch (_: Throwable) {}
+        }
     }
 
     private fun releaseAudioRecord() {
