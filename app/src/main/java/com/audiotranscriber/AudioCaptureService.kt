@@ -47,9 +47,9 @@ class AudioCaptureService : Service() {
         @Volatile var isRunning   = false
             private set
 
-        private const val SILENCE_GAP_MS    = 2_000L
-        private const val STARTUP_TIMEOUT   = 15_000L
-        private const val HARD_LIMIT_MS     = 90_000L
+        private const val SILENCE_GAP_MS    = 1_500L   // stop 500ms sooner after speech ends
+        private const val STARTUP_TIMEOUT   = 12_000L   // tell user sooner if nothing heard
+        private const val HARD_LIMIT_MS     = 120_000L  // allow longer messages
         private const val NOTIF_THROTTLE_MS = 400L
     }
 

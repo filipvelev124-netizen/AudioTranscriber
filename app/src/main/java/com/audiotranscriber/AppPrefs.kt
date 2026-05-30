@@ -19,18 +19,18 @@ object AppPrefs {
     }
 
     // ── Microphone sensitivity ────────────────────────────────────────────────
-    // progress 0 (least sensitive, threshold 500) … 9 (most sensitive, threshold 50)
-    // default 7 → threshold 150
+    // progress 0 (least sensitive, threshold 200) … 9 (most sensitive, threshold 10)
+    // default 9 → threshold 20 — matches quiet phone-speaker playback
 
     fun getSensitivity(context: Context): Int =
-        prefs(context).getInt(KEY_SENSITIVITY, 7)
+        prefs(context).getInt(KEY_SENSITIVITY, 9)
 
     fun setSensitivity(context: Context, v: Int) {
         prefs(context).edit().putInt(KEY_SENSITIVITY, v.coerceIn(0, 9)).apply()
     }
 
     fun getSilenceThreshold(context: Context): Double =
-        ((10 - getSensitivity(context)) * 50).coerceAtLeast(50).toDouble()
+        ((10 - getSensitivity(context)) * 20).coerceAtLeast(10).toDouble()
 
     // ── Per-app filter ────────────────────────────────────────────────────────
 
