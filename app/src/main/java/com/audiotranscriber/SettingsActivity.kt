@@ -136,9 +136,9 @@ class SettingsActivity : AppCompatActivity() {
     private fun updateModelStatus() {
         val lang = Language.getSelected(this)
         tvModelStatus.text = when {
-            lang.isOnline                            -> "Online — uses Google Speech (Bulgarian)"
+            lang.isOnline                            -> "Online — ${lang.displayName} uses cloud recognition"
             ModelDownloader.isDownloaded(this, lang) -> "Ready — ${lang.displayName} model loaded"
-            else                                     -> "Not downloaded — tap mic button to auto-download"
+            else                                     -> "Downloading in background — ready soon"
         }
     }
 
@@ -207,9 +207,9 @@ class SettingsActivity : AppCompatActivity() {
     private fun showModelOptions() {
         val lang = Language.getSelected(this)
         val message = when {
-            lang.isOnline -> "Bulgarian uses Android's built-in online speech recognition (Google). No model download needed — just needs an internet connection."
+            lang.isOnline -> "${lang.displayName} uses cloud speech recognition. No model download needed — requires an internet connection."
             ModelDownloader.isDownloaded(this, lang) -> "${lang.displayName} model is ready for offline use.\n\nTo free up space, you can delete it — it will re-download automatically next time you transcribe."
-            else -> "${lang.displayName} model not downloaded yet. Tap the mic button and it will download automatically on first use (~40 MB)."
+            else -> "${lang.displayName} model is downloading in the background (~40 MB). All language models download automatically after install."
         }
         AlertDialog.Builder(this)
             .setTitle("Speech Model")
@@ -275,11 +275,11 @@ class SettingsActivity : AppCompatActivity() {
             .setTitle("FAQ")
             .setMessage(
                 "Q: Does the app need internet?\n" +
-                "A: After downloading the Whisper model (~75 MB), everything works fully offline.\n\n" +
+                "A: Language models (~40 MB each) download automatically in the background after install. After that, everything is fully offline.\n\n" +
                 "Q: Which languages are supported?\n" +
-                "A: All 99 Whisper languages including Bulgarian, English, Spanish, French, and more.\n\n" +
+                "A: 13 languages: Bulgarian, English, Spanish, French, German, Russian, Portuguese, Italian, Chinese, Hindi, Dutch, Turkish, Korean.\n\n" +
                 "Q: How do I transcribe a voice message?\n" +
-                "A: Start the service, tap Record in the app, then play the voice message on your device.\n\n" +
+                "A: Tap the mic button, then play the voice message. Transcription appears in the notification and is copied to clipboard.\n\n" +
                 "Q: Where are my transcripts stored?\n" +
                 "A: Locally on your device — no data is sent anywhere."
             )

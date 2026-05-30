@@ -78,6 +78,30 @@ class AudioCaptureService : Service() {
         isRunning = true
         if (!tryStartForeground()) { isRunning = false; stopSelf(); return }
         registerCopyReceiver()
+        prefetchAllModels()
+    }
+
+    // Download every undownloaded Vosk model silently in the background.
+    // Downloads are sequential (ModelDownloader uses a shared temp dir).
+    // Selected language goes first so it's ready when the user taps the mic.
+    private fun prefetchAllModels() {
+        scope.launch {
+            val selected  = Language.getSelected(this@AudioCaptureService)
+            val toFetch   = Language.values()
+                .filter { !it.isOnline && !ModelDownloader.isDownloaded(this@AudioCaptureService, it) }
+                .sortedBy { if (it == selected) 0 else 1 }
+            for (lang in toFetch) {
+                try {
+                    ModelDownloader.download(
+                        context    = this@AudioCaptureService,
+                        language   = lang,
+                        onProgress = {},
+                        onComplete = {},
+                        onError    = {}
+                    )
+                } catch (_: Throwable) {}
+            }
+        }
     }
 
     private fun tryStartForeground(): Boolean {
@@ -367,9 +391,11 @@ class AudioCaptureService : Service() {
     private fun buildMicCapture(): AudioRecord? {
         val minBuf  = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val bufSize = if (minBuf > 0) maxOf(minBuf * 4, 16_384) else 16_384
+        // MIC source: raw audio, no echo-cancellation — VOICE_RECOGNITION has echo-cancellation
+        // that actively filters out the phone speaker, which is exactly what we want to capture.
         return try {
             AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
+                MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize
             ).takeIf { it.state == AudioRecord.STATE_INITIALIZED }
         } catch (_: Throwable) { null }
