@@ -29,43 +29,42 @@ jobs:
         run: |
           mkdir -p app/src/main/assets/vosk_models
 
-          # Helper: try each URL in order, retry up to 3 times each, fail hard if all fail.
-          fetch() {
-            local dest="app/src/main/assets/vosk_models/$1.zip"
-            shift
-            for url in "$@"; do
-              echo "  → $url"
-              if curl -L -f --retry 3 --retry-delay 5 --max-time 300 -o "$dest" "$url"; then
-                local size
-                size=$(du -sh "$dest" | cut -f1)
-                echo "  ✓ $dest ($size)"
-                return 0
-              fi
-              echo "  ✗ failed, trying next URL..."
-            done
-            echo "ERROR: all URLs failed for $1" >&2
-            exit 1
-          }
+          # Download 12 models in parallel — fast on GitHub Actions runners
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/english.zip    https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip   &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/spanish.zip    https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip      &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/french.zip     https://alphacephei.com/vosk/models/vosk-model-small-fr-pguyot-0.3.zip &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/german.zip     https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip      &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/russian.zip    https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip      &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/portuguese.zip https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip       &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/italian.zip    https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip      &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/chinese.zip    https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip      &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/hindi.zip      https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip      &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/dutch.zip      https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip      &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/turkish.zip    https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip       &
+          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/korean.zip     https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip      &
+          # Bulgarian: try small model, fall back to full model in same background slot
+          (curl -L --retry 2 --max-time 300 -o app/src/main/assets/vosk_models/bulgarian.zip \
+               https://alphacephei.com/vosk/models/vosk-model-small-bg-0.22.zip \
+           || curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/bulgarian.zip \
+               https://alphacephei.com/vosk/models/vosk-model-bg-0.22.zip) &
+          wait
 
-          fetch english    "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip" \
-                           "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip"
-          fetch spanish    "https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip"
-          fetch french     "https://alphacephei.com/vosk/models/vosk-model-small-fr-pguyot-0.3.zip"
-          fetch german     "https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip"
-          fetch russian    "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
-          fetch portuguese "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"
-          fetch italian    "https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip"
-          fetch chinese    "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip"
-          fetch hindi      "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip"
-          fetch dutch      "https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip"
-          fetch turkish    "https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip"
-          fetch korean     "https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip"
-          # Bulgarian: try small model first, fall back to full model (~200 MB) if unavailable
-          fetch bulgarian  "https://alphacephei.com/vosk/models/vosk-model-small-bg-0.22.zip" \
-                           "https://alphacephei.com/vosk/models/vosk-model-bg-0.22.zip"
-
-          echo "=== All models bundled ==="
+          echo "=== Downloaded files ==="
           ls -lh app/src/main/assets/vosk_models/
+
+          # Verify every model is present and at least 5 MB — fail the build if any is missing
+          PASS=true
+          for lang in english spanish french german russian portuguese italian chinese hindi dutch turkish korean bulgarian; do
+            f="app/src/main/assets/vosk_models/${lang}.zip"
+            size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+            if [ "$size" -lt 5000000 ]; then
+              echo "FAIL: ${lang}.zip missing or corrupt (${size} bytes)"
+              PASS=false
+            else
+              echo "  OK: $lang — $((size/1024/1024)) MB"
+            fi
+          done
+          $PASS || { echo "One or more models failed to download — aborting build"; exit 1; }
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
