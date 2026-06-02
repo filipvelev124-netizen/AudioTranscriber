@@ -3,13 +3,13 @@ name: Build & Release APK
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # lets you trigger a build manually from GitHub
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # required to create GitHub Releases
+      contents: write
 
     steps:
       - name: Checkout code
@@ -25,59 +25,88 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Bundle Vosk language models into APK assets
+      # Cache the model zips — only download once, reuse on every subsequent push
+      - name: Restore Vosk model cache
+        id: vosk-cache
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/assets/vosk_models
+          key: vosk-models-v1
+
+      - name: Download Vosk language models (cache miss only)
+        if: steps.vosk-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p app/src/main/assets/vosk_models
 
-          # Download 12 models in parallel — fast on GitHub Actions runners
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/english.zip    https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip   &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/spanish.zip    https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip      &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/french.zip     https://alphacephei.com/vosk/models/vosk-model-small-fr-pguyot-0.3.zip &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/german.zip     https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip      &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/russian.zip    https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip      &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/portuguese.zip https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip       &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/italian.zip    https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip      &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/chinese.zip    https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip      &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/hindi.zip      https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip      &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/dutch.zip      https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip      &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/turkish.zip    https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip       &
-          curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/korean.zip     https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip      &
-          # Bulgarian: try small model, fall back to full model in same background slot
-          (curl -L --retry 2 --max-time 300 -o app/src/main/assets/vosk_models/bulgarian.zip \
-               https://alphacephei.com/vosk/models/vosk-model-small-bg-0.22.zip \
-           || curl -L --retry 3 --max-time 300 -o app/src/main/assets/vosk_models/bulgarian.zip \
-               https://alphacephei.com/vosk/models/vosk-model-bg-0.22.zip) &
-          wait
+          # Test server reachability first so we get a clear error if blocked
+          echo "=== Connectivity check ==="
+          curl -sI --max-time 10 https://alphacephei.com/vosk/models/ | head -5 || echo "WARNING: alphacephei.com unreachable"
 
-          echo "=== Downloaded files ==="
+          # Download one model at a time with explicit -f (fail on HTTP error)
+          # and full retry/fallback logic — exit 1 immediately if any model fails
+          dl() {
+            local name="$1"; shift
+            local dest="app/src/main/assets/vosk_models/${name}.zip"
+            for url in "$@"; do
+              echo "  Trying $url"
+              if curl -fL --retry 3 --retry-delay 5 --max-time 600 \
+                     --progress-bar -o "$dest" "$url"; then
+                echo "  OK: $name — $(du -sh "$dest" | cut -f1)"
+                return 0
+              fi
+              echo "  Failed: $url"
+              rm -f "$dest"
+            done
+            echo "FATAL: all URLs failed for $name" >&2
+            return 1
+          }
+
+          dl english    "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip" \
+                        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip"
+          dl spanish    "https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip"
+          dl french     "https://alphacephei.com/vosk/models/vosk-model-small-fr-pguyot-0.3.zip"
+          dl german     "https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip"
+          dl russian    "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
+          dl portuguese "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"
+          dl italian    "https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip"
+          dl chinese    "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip"
+          dl hindi      "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip"
+          dl dutch      "https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip"
+          dl turkish    "https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip"
+          dl korean     "https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip"
+          dl bulgarian  "https://alphacephei.com/vosk/models/vosk-model-small-bg-0.22.zip" \
+                        "https://alphacephei.com/vosk/models/vosk-model-bg-0.22.zip"
+
+          echo "=== All 13 models downloaded ==="
           ls -lh app/src/main/assets/vosk_models/
 
-          # Verify every model is present and at least 5 MB — fail the build if any is missing
-          PASS=true
+      - name: Verify all models present
+        run: |
+          echo "Models in cache/assets:"
+          ls -lh app/src/main/assets/vosk_models/ 2>/dev/null || { echo "ERROR: vosk_models directory missing"; exit 1; }
+          ok=0; fail=0
           for lang in english spanish french german russian portuguese italian chinese hindi dutch turkish korean bulgarian; do
             f="app/src/main/assets/vosk_models/${lang}.zip"
             size=$(stat -c%s "$f" 2>/dev/null || echo 0)
             if [ "$size" -lt 5000000 ]; then
-              echo "FAIL: ${lang}.zip missing or corrupt (${size} bytes)"
-              PASS=false
+              echo "  MISSING: $lang (${size} bytes)"; fail=$((fail+1))
             else
-              echo "  OK: $lang — $((size/1024/1024)) MB"
+              echo "  OK: $lang — $((size/1024/1024)) MB"; ok=$((ok+1))
             fi
           done
-          $PASS || { echo "One or more models failed to download — aborting build"; exit 1; }
+          echo "$ok/13 models ready, $fail missing"
+          [ "$fail" -eq 0 ] || exit 1
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Verify APK contains all bundled models
+      - name: Verify APK size and bundled models
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
-          echo "=== APK size ==="
           ls -lh "$APK"
-          echo "=== Vosk models inside APK ==="
-          unzip -l "$APK" | grep "vosk_models" || echo "WARNING: no vosk_models found in APK"
-          echo "=== Total asset size ==="
-          unzip -l "$APK" | grep "vosk_models" | awk '{sum += $1} END {printf "%.0f MB\n", sum/1024/1024}'
+          count=$(unzip -l "$APK" | grep -c "vosk_models" || echo 0)
+          echo "$count model files inside APK"
+          [ "$count" -ge 13 ] || echo "WARNING: expected 13+ model files in APK"
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
@@ -86,17 +115,14 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      # Publish to GitHub Releases using gh CLI
-      # Download from: github.com/<you>/AudioTranscriber/releases/latest
       - name: Publish to GitHub Releases
         run: |
-          # Delete release and remote tag (belt + suspenders)
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
           git push origin :refs/tags/latest 2>/dev/null || true
           sleep 5
           gh release create latest \
-            --title "Latest Build" \
-            --notes "Auto-built from main branch. Download **app-debug.apk** below, then on your phone go to Settings > Security > Install unknown apps, allow your browser, and open the APK to install." \
+            --title "Latest Build (~550 MB — all 13 languages built in)" \
+            --notes "All 13 Vosk language models are bundled inside the APK — no internet needed after install. Download **app-debug.apk** below, then on your phone go to Settings > Security > Install unknown apps, allow your browser, and open the APK to install." \
             app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
