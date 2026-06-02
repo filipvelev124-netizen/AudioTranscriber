@@ -69,6 +69,16 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
+      - name: Verify APK contains all bundled models
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          echo "=== APK size ==="
+          ls -lh "$APK"
+          echo "=== Vosk models inside APK ==="
+          unzip -l "$APK" | grep "vosk_models" || echo "WARNING: no vosk_models found in APK"
+          echo "=== Total asset size ==="
+          unzip -l "$APK" | grep "vosk_models" | awk '{sum += $1} END {printf "%.0f MB\n", sum/1024/1024}'
+
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:

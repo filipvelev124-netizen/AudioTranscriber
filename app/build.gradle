@@ -58,8 +58,8 @@ android {
         viewBinding true
     }
 
-    // Zip files are already compressed — store them as-is in the APK
-    androidResources {
+    // Zip files are already compressed — store them verbatim in the APK (no double-compression)
+    aaptOptions {
         noCompress 'zip'
     }
 
